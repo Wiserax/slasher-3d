@@ -2,192 +2,300 @@ import * as THREE from 'three';
 
 // ─── SCENE SETUP ───
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x1a1a2e);
-scene.fog = new THREE.FogExp2(0x1a1a2e, 0.025);
+scene.fog = new THREE.FogExp2(0x88aacc, 0.012);
 
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 300);
 camera.position.set(0, 2, 5);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
 document.body.appendChild(renderer.domElement);
 
-// ─── LIGHTS ───
-scene.add(new THREE.AmbientLight(0x303050, 0.6));
-
-const dirLight = new THREE.DirectionalLight(0xffeedd, 1.2);
-dirLight.position.set(10, 15, 10);
-dirLight.castShadow = true;
-dirLight.shadow.mapSize.set(2048, 2048);
-dirLight.shadow.camera.left = -30;
-dirLight.shadow.camera.right = 30;
-dirLight.shadow.camera.top = 30;
-dirLight.shadow.camera.bottom = -30;
-scene.add(dirLight);
-
-const moonLight = new THREE.DirectionalLight(0x4466aa, 0.4);
-moonLight.position.set(-10, 10, -10);
-scene.add(moonLight);
-
-// ─── FLOOR ───
-const floorGeo = new THREE.PlaneGeometry(80, 80, 40, 40);
-const posAttr = floorGeo.attributes.position;
-for (let i = 0; i < posAttr.count; i++) {
-  const x = posAttr.getX(i);
-  const y = posAttr.getY(i);
-  const noise = Math.sin(x * 0.3) * Math.cos(y * 0.3) * 0.3 +
-                Math.sin(x * 0.7 + 1) * Math.cos(y * 0.5 + 2) * 0.15;
-  posAttr.setZ(i, noise);
+// ─── SKY ───
+const skyGeo = new THREE.SphereGeometry(150, 32, 16);
+const skyCanvas = document.createElement('canvas');
+skyCanvas.width = 512; skyCanvas.height = 512;
+const skyCtx = skyCanvas.getContext('2d');
+const grad = skyCtx.createLinearGradient(0, 0, 0, 512);
+grad.addColorStop(0, '#0a0a2e');
+grad.addColorStop(0.3, '#1a2a5e');
+grad.addColorStop(0.5, '#4466aa');
+grad.addColorStop(0.7, '#88aacc');
+grad.addColorStop(0.85, '#ddaa77');
+grad.addColorStop(1, '#ff8844');
+skyCtx.fillStyle = grad;
+skyCtx.fillRect(0, 0, 512, 512);
+// Stars in upper half
+for (let i = 0; i < 200; i++) {
+  skyCtx.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.7})`;
+  skyCtx.fillRect(Math.random() * 512, Math.random() * 256, 1 + Math.random(), 1 + Math.random());
 }
-floorGeo.computeVertexNormals();
+const skyTex = new THREE.CanvasTexture(skyCanvas);
+const skyMat = new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide });
+const sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
 
-const floorMat = new THREE.MeshStandardMaterial({ color: 0x2a3a1e, roughness: 0.9, metalness: 0.1 });
+// ─── LIGHTS — sunset/dusk feel ───
+scene.add(new THREE.AmbientLight(0x556688, 0.7));
+// Sun (warm, from south/low)
+const sunLight = new THREE.DirectionalLight(0xffddaa, 1.5);
+sunLight.position.set(0, 12, -50);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.left = -50;
+sunLight.shadow.camera.right = 50;
+sunLight.shadow.camera.top = 50;
+sunLight.shadow.camera.bottom = -50;
+sunLight.shadow.camera.far = 120;
+scene.add(sunLight);
+// Cool fill from north
+const fillLight = new THREE.DirectionalLight(0x4466cc, 0.5);
+fillLight.position.set(0, 8, 50);
+scene.add(fillLight);
+// Hemisphere (sky/ground bounce)
+scene.add(new THREE.HemisphereLight(0x6688bb, 0x443322, 0.4));
+
+// ─── ARENA ───
+const ARENA_RADIUS = 50;
+
+// ─── FLOOR — 4 biome quadrants ───
+// +Z = North (ice), -Z = South (desert), -X = West (forest), +X = East (volcanic)
+const floorSize = ARENA_RADIUS * 2 + 10;
+const floorSegs = 60;
+const floorGeo = new THREE.PlaneGeometry(floorSize, floorSize, floorSegs, floorSegs);
+const posAttr = floorGeo.attributes.position;
+const floorColors = [];
+for (let i = 0; i < posAttr.count; i++) {
+  const fx = posAttr.getX(i);
+  const fy = posAttr.getY(i);
+  const noise = Math.sin(fx * 0.2) * Math.cos(fy * 0.2) * 0.25 +
+                Math.sin(fx * 0.5 + 1) * Math.cos(fy * 0.4 + 2) * 0.1;
+  posAttr.setZ(i, noise);
+  // Biome color by position
+  const nx = fx / ARENA_RADIUS; // -1 to 1
+  const nz = fy / ARENA_RADIUS;
+  let r, g, b;
+  if (nz > 0.3) { // North — ice/snow
+    r = 0.75 + nz * 0.15; g = 0.8 + nz * 0.1; b = 0.9;
+  } else if (nz < -0.3) { // South — desert/sand
+    r = 0.7 + Math.abs(nz) * 0.2; g = 0.55 + Math.abs(nz) * 0.1; b = 0.3;
+  } else if (nx < -0.3) { // West — forest
+    r = 0.15; g = 0.35 + Math.abs(nx) * 0.15; b = 0.1;
+  } else if (nx > 0.3) { // East — volcanic
+    r = 0.2 + nx * 0.15; g = 0.1; b = 0.08;
+  } else { // Center — neutral stone
+    r = 0.2; g = 0.22; b = 0.18;
+  }
+  floorColors.push(r, g, b);
+}
+floorGeo.setAttribute('color', new THREE.Float32BufferAttribute(floorColors, 3));
+floorGeo.computeVertexNormals();
+const floorMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0.05 });
 const floor = new THREE.Mesh(floorGeo, floorMat);
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-// ─── ARENA WALLS ───
-const ARENA_RADIUS = 35;
-const wallSegments = 48;
+// ─── ARENA WALLS — themed by direction ───
+const wallSegments = 64;
 for (let i = 0; i < wallSegments; i++) {
   const angle = (i / wallSegments) * Math.PI * 2;
   const wallW = (2 * Math.PI * ARENA_RADIUS) / wallSegments + 0.5;
-  const wallH = 4 + Math.random() * 3;
-  const wallGeo = new THREE.BoxGeometry(wallW, wallH, 1.2);
-  const shade = 0.15 + Math.random() * 0.1;
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(shade, shade * 0.9, shade * 0.8),
-    roughness: 0.95, metalness: 0.05,
-  });
-  const wall = new THREE.Mesh(wallGeo, wallMat);
-  wall.position.set(Math.cos(angle) * ARENA_RADIUS, wallH / 2, Math.sin(angle) * ARENA_RADIUS);
-  wall.rotation.y = -angle + Math.PI / 2;
-  wall.castShadow = true;
-  wall.receiveShadow = true;
-  scene.add(wall);
-}
-// Glowing runes on some wall segments
-for (let i = 0; i < 12; i++) {
-  const angle = (i / 12) * Math.PI * 2;
-  const rune = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.2, 1.2),
-    new THREE.MeshBasicMaterial({
-      color: Math.random() > 0.5 ? 0x4466ff : 0xff4422,
-      transparent: true, opacity: 0.4, side: THREE.DoubleSide,
-    })
+  const wallH = 5 + Math.random() * 4;
+  const wx = Math.cos(angle) * ARENA_RADIUS;
+  const wz = Math.sin(angle) * ARENA_RADIUS;
+  // Color by biome
+  let wallColor;
+  if (wz > ARENA_RADIUS * 0.3) wallColor = new THREE.Color(0.6, 0.65, 0.75); // north ice
+  else if (wz < -ARENA_RADIUS * 0.3) wallColor = new THREE.Color(0.5, 0.35, 0.2); // south sand
+  else if (wx < -ARENA_RADIUS * 0.3) wallColor = new THREE.Color(0.15, 0.25, 0.1); // west forest
+  else if (wx > ARENA_RADIUS * 0.3) wallColor = new THREE.Color(0.25, 0.08, 0.05); // east volcano
+  else wallColor = new THREE.Color(0.18, 0.18, 0.16);
+  const wall = new THREE.Mesh(
+    new THREE.BoxGeometry(wallW, wallH, 1.5),
+    new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9, metalness: 0.05 })
   );
-  rune.position.set(Math.cos(angle) * (ARENA_RADIUS - 0.3), 2.5, Math.sin(angle) * (ARENA_RADIUS - 0.3));
-  rune.rotation.y = -angle + Math.PI / 2;
-  scene.add(rune);
+  wall.position.set(wx, wallH / 2, wz);
+  wall.rotation.y = -angle + Math.PI / 2;
+  wall.castShadow = true; wall.receiveShadow = true;
+  scene.add(wall);
 }
 
 function clampToArena(pos) {
-  const dx = pos.x, dz = pos.z;
-  const dist = Math.sqrt(dx * dx + dz * dz);
-  if (dist > ARENA_RADIUS - 1.5) {
-    const n = (ARENA_RADIUS - 1.5) / dist;
-    pos.x = dx * n;
-    pos.z = dz * n;
-  }
+  const d = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
+  if (d > ARENA_RADIUS - 2) { const n = (ARENA_RADIUS - 2) / d; pos.x *= n; pos.z *= n; }
 }
 
-// ─── ENVIRONMENT: ROCKS ───
-function createRock(x, z, scale) {
-  const geo = new THREE.DodecahedronGeometry(scale, 1);
-  const positions = geo.attributes.position;
-  for (let i = 0; i < positions.count; i++) {
-    positions.setX(i, positions.getX(i) + (Math.random() - 0.5) * scale * 0.4);
-    positions.setY(i, positions.getY(i) + (Math.random() - 0.5) * scale * 0.4);
-    positions.setZ(i, positions.getZ(i) + (Math.random() - 0.5) * scale * 0.4);
+// ─── BIOME: NORTH (Ice) — z > 15 ───
+for (let i = 0; i < 20; i++) {
+  const x = (Math.random() - 0.5) * 40;
+  const z = 18 + Math.random() * 25;
+  // Ice crystal
+  const h = 1 + Math.random() * 3;
+  const crystal = new THREE.Mesh(
+    new THREE.ConeGeometry(0.3 + Math.random() * 0.5, h, 5),
+    new THREE.MeshStandardMaterial({ color: 0x88ccee, metalness: 0.6, roughness: 0.1, transparent: true, opacity: 0.7 })
+  );
+  crystal.position.set(x, h / 2, z);
+  crystal.castShadow = true;
+  scene.add(crystal);
+}
+// Snow mounds
+for (let i = 0; i < 15; i++) {
+  const x = (Math.random() - 0.5) * 50;
+  const z = 15 + Math.random() * 30;
+  const mound = new THREE.Mesh(
+    new THREE.SphereGeometry(1 + Math.random() * 2, 8, 6),
+    new THREE.MeshStandardMaterial({ color: 0xddeeff, roughness: 0.95 })
+  );
+  mound.position.set(x, 0.3, z);
+  mound.scale.y = 0.3;
+  scene.add(mound);
+}
+
+// ─── BIOME: SOUTH (Desert) — z < -15 ───
+for (let i = 0; i < 15; i++) {
+  const x = (Math.random() - 0.5) * 40;
+  const z = -18 - Math.random() * 25;
+  // Cactus
+  const cGroup = new THREE.Group();
+  const cH = 1.5 + Math.random() * 2;
+  const cactMat = new THREE.MeshStandardMaterial({ color: 0x337733, roughness: 0.8 });
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.2, cH, 6), cactMat);
+  trunk.position.y = cH / 2;
+  cGroup.add(trunk);
+  if (Math.random() > 0.4) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.8, 6), cactMat);
+    arm.position.set(0.3, cH * 0.6, 0);
+    arm.rotation.z = -1.2;
+    cGroup.add(arm);
   }
-  geo.computeVertexNormals();
-  const shade = 0.3 + Math.random() * 0.3;
-  const mat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(shade, shade, shade * 0.9), roughness: 0.95, metalness: 0.05,
-  });
-  const rock = new THREE.Mesh(geo, mat);
-  rock.position.set(x, scale * 0.4, z);
+  cGroup.position.set(x, 0, z);
+  cGroup.castShadow = true;
+  scene.add(cGroup);
+}
+// Sand dunes
+for (let i = 0; i < 10; i++) {
+  const x = (Math.random() - 0.5) * 50;
+  const z = -15 - Math.random() * 30;
+  const dune = new THREE.Mesh(
+    new THREE.SphereGeometry(2 + Math.random() * 3, 8, 6),
+    new THREE.MeshStandardMaterial({ color: 0xccaa66, roughness: 0.95 })
+  );
+  dune.position.set(x, 0.2, z); dune.scale.y = 0.25;
+  scene.add(dune);
+}
+
+// ─── BIOME: WEST (Forest) — x < -15 ───
+for (let i = 0; i < 20; i++) {
+  const x = -18 - Math.random() * 25;
+  const z = (Math.random() - 0.5) * 40;
+  const tGroup = new THREE.Group();
+  const tH = 3 + Math.random() * 4;
+  const tMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.95 });
+  const t = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.3, tH, 6), tMat);
+  t.position.y = tH / 2; t.castShadow = true;
+  tGroup.add(t);
+  // Green canopy
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(1 + Math.random() * 1.5, 8, 6),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(0.1, 0.3 + Math.random() * 0.2, 0.08), roughness: 0.9 })
+  );
+  canopy.position.y = tH - 0.5;
+  canopy.scale.y = 0.7;
+  canopy.castShadow = true;
+  tGroup.add(canopy);
+  tGroup.position.set(x, 0, z);
+  scene.add(tGroup);
+}
+// Forest floor grass (dense)
+for (let i = 0; i < 60; i++) {
+  const x = -10 - Math.random() * 35;
+  const z = (Math.random() - 0.5) * 50;
+  const gGroup = new THREE.Group();
+  for (let j = 0; j < 6; j++) {
+    const h = 0.3 + Math.random() * 0.5;
+    const blade = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.06, h),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(0.1, 0.25 + Math.random() * 0.3, 0.05), side: THREE.DoubleSide, roughness: 0.9 })
+    );
+    blade.position.set((Math.random() - 0.5) * 0.4, h / 2, (Math.random() - 0.5) * 0.4);
+    blade.rotation.y = Math.random() * Math.PI;
+    gGroup.add(blade);
+  }
+  gGroup.position.set(x, 0, z);
+  scene.add(gGroup);
+}
+
+// ─── BIOME: EAST (Volcanic) — x > 15 ───
+for (let i = 0; i < 12; i++) {
+  const x = 18 + Math.random() * 25;
+  const z = (Math.random() - 0.5) * 40;
+  // Lava rock
+  const rScale = 0.5 + Math.random() * 2;
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(rScale, 1),
+    new THREE.MeshStandardMaterial({ color: 0x1a0a0a, roughness: 0.9, metalness: 0.1 })
+  );
+  rock.position.set(x, rScale * 0.4, z);
   rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
   rock.castShadow = true;
-  rock.receiveShadow = true;
-  return rock;
+  scene.add(rock);
 }
-for (let i = 0; i < 40; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 5 + Math.random() * 30;
-  scene.add(createRock(Math.cos(angle) * dist, Math.sin(angle) * dist, 0.3 + Math.random() * 1.5));
+// Lava pools (glowing)
+for (let i = 0; i < 6; i++) {
+  const x = 20 + Math.random() * 20;
+  const z = (Math.random() - 0.5) * 35;
+  const pool = new THREE.Mesh(
+    new THREE.CircleGeometry(1 + Math.random() * 1.5, 16),
+    new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.7 })
+  );
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.set(x, 0.05, z);
+  scene.add(pool);
+  const lavaLight = new THREE.PointLight(0xff4400, 0.6, 6);
+  lavaLight.position.set(x, 0.5, z);
+  scene.add(lavaLight);
 }
-
-// ─── ENVIRONMENT: GRASS ───
-function createGrassClump(x, z) {
-  const group = new THREE.Group();
-  const bladeCount = 5 + Math.floor(Math.random() * 8);
-  for (let i = 0; i < bladeCount; i++) {
-    const h = 0.3 + Math.random() * 0.6;
-    const geo = new THREE.PlaneGeometry(0.06, h);
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.1, 0.2 + Math.random() * 0.4, 0.05), side: THREE.DoubleSide, roughness: 0.9,
-    });
-    const blade = new THREE.Mesh(geo, mat);
-    blade.position.set((Math.random() - 0.5) * 0.5, h / 2, (Math.random() - 0.5) * 0.5);
-    blade.rotation.y = Math.random() * Math.PI;
-    blade.rotation.z = (Math.random() - 0.5) * 0.3;
-    group.add(blade);
-  }
-  group.position.set(x, 0, z);
-  return group;
-}
-for (let i = 0; i < 120; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 2 + Math.random() * 30;
-  scene.add(createGrassClump(Math.cos(angle) * dist, Math.sin(angle) * dist));
+// Volcanic vents (particle-like cones)
+for (let i = 0; i < 5; i++) {
+  const x = 15 + Math.random() * 28;
+  const z = (Math.random() - 0.5) * 35;
+  const vent = new THREE.Mesh(
+    new THREE.ConeGeometry(0.5, 1.5 + Math.random(), 6),
+    new THREE.MeshStandardMaterial({ color: 0x2a0a0a, roughness: 0.95 })
+  );
+  vent.position.set(x, 0.5, z);
+  scene.add(vent);
 }
 
-// ─── ENVIRONMENT: DEAD TREES ───
-function createTree(x, z) {
-  const group = new THREE.Group();
-  const trunkH = 3 + Math.random() * 3;
-  const trunkGeo = new THREE.CylinderGeometry(0.1, 0.25, trunkH, 6);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.95 });
-  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-  trunk.position.y = trunkH / 2;
-  trunk.castShadow = true;
-  group.add(trunk);
-  for (let i = 0; i < 3 + Math.random() * 3; i++) {
-    const bLen = 0.8 + Math.random() * 1.5;
-    const bGeo = new THREE.CylinderGeometry(0.02, 0.06, bLen, 4);
-    const branch = new THREE.Mesh(bGeo, trunkMat);
-    branch.position.y = trunkH * (0.4 + Math.random() * 0.5);
-    branch.position.x = (Math.random() - 0.5) * 0.3;
-    branch.rotation.z = (Math.random() - 0.5) * 1.5;
-    branch.rotation.y = Math.random() * Math.PI * 2;
-    branch.castShadow = true;
-    group.add(branch);
-  }
-  group.position.set(x, 0, z);
-  return group;
+// ─── CENTER — scattered rocks + mushrooms ───
+for (let i = 0; i < 25; i++) {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 3 + Math.random() * 14;
+  const rScale = 0.3 + Math.random() * 1;
+  const shade = 0.25 + Math.random() * 0.2;
+  const rock = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(rScale, 1),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(shade, shade, shade * 0.9), roughness: 0.95 })
+  );
+  rock.position.set(Math.cos(angle) * dist, rScale * 0.3, Math.sin(angle) * dist);
+  rock.rotation.set(Math.random() * 2, Math.random() * 2, 0);
+  rock.castShadow = true;
+  scene.add(rock);
 }
 for (let i = 0; i < 15; i++) {
   const angle = Math.random() * Math.PI * 2;
-  const dist = 8 + Math.random() * 25;
-  scene.add(createTree(Math.cos(angle) * dist, Math.sin(angle) * dist));
-}
-
-// ─── ENVIRONMENT: GLOWING MUSHROOMS ───
-for (let i = 0; i < 20; i++) {
-  const angle = Math.random() * Math.PI * 2;
-  const dist = 3 + Math.random() * 25;
+  const dist = 5 + Math.random() * 20;
   const mGroup = new THREE.Group();
-  const stem = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.04, 0.05, 0.3, 6),
-    new THREE.MeshStandardMaterial({ color: 0x886688 })
-  );
+  const glowColor = [0x44ffaa, 0xaa44ff, 0xff88aa][Math.floor(Math.random() * 3)];
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.3, 6), new THREE.MeshStandardMaterial({ color: 0x886688 }));
   stem.position.y = 0.15;
   mGroup.add(stem);
-  const glowColor = Math.random() > 0.5 ? 0x44ffaa : 0xaa44ff;
   const cap = new THREE.Mesh(
     new THREE.SphereGeometry(0.12, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
     new THREE.MeshStandardMaterial({ color: glowColor, emissive: glowColor, emissiveIntensity: 0.5 })
@@ -364,70 +472,70 @@ function updateCaves() {
   });
 }
 
-// ─── ARENA PLATFORMS & VERTICALITY ───
+// ─── PLATFORMS & RAMPS ───
 const platforms = [];
-function addPlatform(x, y, z, w, d, hasRamp, rampDir) {
-  const platGeo = new THREE.BoxGeometry(w, 0.4, d);
-  const platMat = new THREE.MeshStandardMaterial({ color: 0x3a3a4e, roughness: 0.85, metalness: 0.15 });
-  const plat = new THREE.Mesh(platGeo, platMat);
+const ramps = [];
+const platMat = new THREE.MeshStandardMaterial({ color: 0x3a3a4e, roughness: 0.85, metalness: 0.15 });
+const pillarMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.9 });
+const rampMat = new THREE.MeshStandardMaterial({ color: 0x444460, roughness: 0.8 });
+
+function addPlatform(x, y, z, w, d) {
+  const plat = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, d), platMat);
   plat.position.set(x, y, z);
   plat.castShadow = true; plat.receiveShadow = true;
   scene.add(plat);
-  platforms.push({ mesh: plat, x, y: y + 0.2, z, hw: w / 2, hd: d / 2 });
-  // Pillars
-  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.9 });
-  [[-w / 2 + 0.3, -d / 2 + 0.3], [w / 2 - 0.3, -d / 2 + 0.3], [-w / 2 + 0.3, d / 2 - 0.3], [w / 2 - 0.3, d / 2 - 0.3]].forEach(([px, pz]) => {
+  platforms.push({ x, y: y + 0.25, z, hw: w / 2, hd: d / 2 });
+  // Pillars at corners
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sz]) => {
     const p = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, y, 6), pillarMat);
-    p.position.set(x + px, y / 2, z + pz); p.castShadow = true;
+    p.position.set(x + sx * (w / 2 - 0.3), y / 2, z + sz * (d / 2 - 0.3));
+    p.castShadow = true;
     scene.add(p);
   });
-  // Ramp
-  if (hasRamp) {
-    const rampLen = y / Math.sin(0.4);
-    const ramp = new THREE.Mesh(new THREE.BoxGeometry(2, 0.2, rampLen),
-      new THREE.MeshStandardMaterial({ color: 0x444460, roughness: 0.8 }));
-    const rDir = rampDir || 0;
-    ramp.position.set(x + Math.sin(rDir) * (d / 2 + rampLen / 2 * Math.cos(0.4) - 0.5), y / 2, z + Math.cos(rDir) * (d / 2 + rampLen / 2 * Math.cos(0.4) - 0.5));
-    ramp.rotation.x = rDir === 0 ? 0.4 : 0;
-    ramp.rotation.z = rDir !== 0 ? (rDir > 0 ? -0.4 : 0.4) : 0;
-    ramp.castShadow = true;
-    scene.add(ramp);
-  }
-  // Edge glow
-  const edgeMat = new THREE.MeshBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.3 });
-  const edge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.05, d + 0.1), edgeMat);
-  edge.position.set(x, y + 0.21, z);
+  // Glowing edge
+  const edge = new THREE.Mesh(
+    new THREE.BoxGeometry(w + 0.1, 0.06, d + 0.1),
+    new THREE.MeshBasicMaterial({ color: 0x446688, transparent: true, opacity: 0.3 })
+  );
+  edge.position.set(x, y + 0.26, z);
   scene.add(edge);
 }
-// Central raised arena
-addPlatform(0, 2.5, 0, 8, 8, true, 0);
-// Side platforms
-addPlatform(-15, 3.5, -15, 6, 6, true, Math.PI / 4);
-addPlatform(15, 3.5, 15, 6, 6, true, -Math.PI * 3 / 4);
-addPlatform(-18, 5, 10, 5, 5, true, -Math.PI / 3);
-addPlatform(18, 5, -10, 5, 5, true, Math.PI * 2 / 3);
-// Bridges between platforms (narrow)
-function addBridge(x1, z1, x2, z2, y) {
-  const dx = x2 - x1, dz = z2 - z1;
-  const len = Math.sqrt(dx * dx + dz * dz);
-  const bridge = new THREE.Mesh(
-    new THREE.BoxGeometry(1.5, 0.2, len),
-    new THREE.MeshStandardMaterial({ color: 0x3a3a4e, roughness: 0.85 })
-  );
-  bridge.position.set((x1 + x2) / 2, y, (z1 + z2) / 2);
-  bridge.rotation.y = Math.atan2(dx, dz);
-  bridge.castShadow = true;
-  scene.add(bridge);
-  // Rail posts
-  for (let t = 0.2; t < 1; t += 0.3) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 4),
-      new THREE.MeshStandardMaterial({ color: 0x555577 }));
-    post.position.set(x1 + dx * t + 0.6 * Math.cos(Math.atan2(dx, dz)), y + 0.4, z1 + dz * t - 0.6 * Math.sin(Math.atan2(dx, dz)));
-    scene.add(post);
-  }
+
+function addRamp(x1, z1, x2, z2, y1, y2, width) {
+  // Ramp = sloped box from (x1,y1,z1) to (x2,y2,z2)
+  const dx = x2 - x1, dz = z2 - z1, dy = y2 - y1;
+  const horizLen = Math.sqrt(dx * dx + dz * dz);
+  const totalLen = Math.sqrt(horizLen * horizLen + dy * dy);
+  const angle = Math.atan2(dy, horizLen);
+  const yawAngle = Math.atan2(dx, dz);
+
+  const ramp = new THREE.Mesh(new THREE.BoxGeometry(width, 0.2, totalLen), rampMat);
+  ramp.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
+  ramp.rotation.order = 'YXZ';
+  ramp.rotation.y = yawAngle;
+  ramp.rotation.x = -angle;
+  ramp.castShadow = true;
+  scene.add(ramp);
+  // Store ramp data for collision
+  ramps.push({ x1, z1, x2, z2, y1, y2, width: width / 2, horizLen });
 }
-addBridge(-8, -8, -15, -15, 3);
-addBridge(8, 8, 15, 15, 3);
+
+// Central platform
+addPlatform(0, 3, 0, 10, 10);
+addRamp(0, 8, 0, 14, 3, 0, 3);   // south ramp down
+addRamp(0, -8, 0, -14, 3, 0, 3); // north ramp down
+addRamp(8, 0, 14, 0, 3, 0, 3);   // east ramp
+addRamp(-8, 0, -14, 0, 3, 0, 3); // west ramp
+
+// Corner platforms
+addPlatform(-20, 4, -20, 7, 7);
+addRamp(-17, -20, -12, -20, 4, 0, 2.5);
+addPlatform(20, 4, 20, 7, 7);
+addRamp(17, 20, 12, 20, 4, 0, 2.5);
+addPlatform(-22, 5.5, 15, 6, 6);
+addRamp(-19, 15, -14, 15, 5.5, 0, 2.5);
+addPlatform(22, 5.5, -15, 6, 6);
+addRamp(19, -15, 14, -15, 5.5, 0, 2.5);
 
 // ─── PLAYER ── Anime girl model ───
 const playerGroup = new THREE.Group();
@@ -2194,15 +2302,38 @@ function animate() {
   player.velocityY += GRAVITY * dt;
   playerGroup.position.y += player.velocityY * dt;
 
-  // Platform collision — stand on top of platforms
+  // Platform collision
   let onPlatform = false;
   if (player.velocityY <= 0) {
     for (const p of platforms) {
       const dx = Math.abs(playerGroup.position.x - p.x);
       const dz = Math.abs(playerGroup.position.z - p.z);
-      if (dx < p.hw && dz < p.hd) {
-        if (playerGroup.position.y <= p.y && playerGroup.position.y > p.y - 1.5) {
-          playerGroup.position.y = p.y;
+      if (dx < p.hw && dz < p.hd && playerGroup.position.y <= p.y && playerGroup.position.y > p.y - 2) {
+        playerGroup.position.y = p.y;
+        player.velocityY = 0;
+        player.grounded = true;
+        player.jumpsLeft = 2;
+        onPlatform = true;
+        break;
+      }
+    }
+    // Ramp collision — walk up/down slopes
+    if (!onPlatform) {
+      for (const r of ramps) {
+        const rdx = r.x2 - r.x1, rdz = r.z2 - r.z1;
+        const rLen = r.horizLen;
+        // Project player pos onto ramp line
+        const px = playerGroup.position.x - r.x1, pz = playerGroup.position.z - r.z1;
+        const t = (px * rdx + pz * rdz) / (rLen * rLen);
+        if (t < -0.05 || t > 1.05) continue;
+        // Perpendicular distance
+        const projX = r.x1 + rdx * t, projZ = r.z1 + rdz * t;
+        const perpDist = Math.sqrt((playerGroup.position.x - projX) ** 2 + (playerGroup.position.z - projZ) ** 2);
+        if (perpDist > r.width) continue;
+        // Ramp height at this t
+        const rampY = r.y1 + (r.y2 - r.y1) * t;
+        if (playerGroup.position.y <= rampY + 0.3 && playerGroup.position.y > rampY - 1.5) {
+          playerGroup.position.y = rampY;
           player.velocityY = 0;
           player.grounded = true;
           player.jumpsLeft = 2;
