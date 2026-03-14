@@ -364,22 +364,152 @@ function updateCaves() {
   });
 }
 
-// ─── PLAYER ───
-const playerGroup = new THREE.Group();
-const legMat = new THREE.MeshStandardMaterial({ color: 0x2255aa, metalness: 0.2, roughness: 0.7 });
+// ─── ARENA PLATFORMS & VERTICALITY ───
+const platforms = [];
+function addPlatform(x, y, z, w, d, hasRamp, rampDir) {
+  const platGeo = new THREE.BoxGeometry(w, 0.4, d);
+  const platMat = new THREE.MeshStandardMaterial({ color: 0x3a3a4e, roughness: 0.85, metalness: 0.15 });
+  const plat = new THREE.Mesh(platGeo, platMat);
+  plat.position.set(x, y, z);
+  plat.castShadow = true; plat.receiveShadow = true;
+  scene.add(plat);
+  platforms.push({ mesh: plat, x, y: y + 0.2, z, hw: w / 2, hd: d / 2 });
+  // Pillars
+  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x2a2a3a, roughness: 0.9 });
+  [[-w / 2 + 0.3, -d / 2 + 0.3], [w / 2 - 0.3, -d / 2 + 0.3], [-w / 2 + 0.3, d / 2 - 0.3], [w / 2 - 0.3, d / 2 - 0.3]].forEach(([px, pz]) => {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, y, 6), pillarMat);
+    p.position.set(x + px, y / 2, z + pz); p.castShadow = true;
+    scene.add(p);
+  });
+  // Ramp
+  if (hasRamp) {
+    const rampLen = y / Math.sin(0.4);
+    const ramp = new THREE.Mesh(new THREE.BoxGeometry(2, 0.2, rampLen),
+      new THREE.MeshStandardMaterial({ color: 0x444460, roughness: 0.8 }));
+    const rDir = rampDir || 0;
+    ramp.position.set(x + Math.sin(rDir) * (d / 2 + rampLen / 2 * Math.cos(0.4) - 0.5), y / 2, z + Math.cos(rDir) * (d / 2 + rampLen / 2 * Math.cos(0.4) - 0.5));
+    ramp.rotation.x = rDir === 0 ? 0.4 : 0;
+    ramp.rotation.z = rDir !== 0 ? (rDir > 0 ? -0.4 : 0.4) : 0;
+    ramp.castShadow = true;
+    scene.add(ramp);
+  }
+  // Edge glow
+  const edgeMat = new THREE.MeshBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.3 });
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, 0.05, d + 0.1), edgeMat);
+  edge.position.set(x, y + 0.21, z);
+  scene.add(edge);
+}
+// Central raised arena
+addPlatform(0, 2.5, 0, 8, 8, true, 0);
+// Side platforms
+addPlatform(-15, 3.5, -15, 6, 6, true, Math.PI / 4);
+addPlatform(15, 3.5, 15, 6, 6, true, -Math.PI * 3 / 4);
+addPlatform(-18, 5, 10, 5, 5, true, -Math.PI / 3);
+addPlatform(18, 5, -10, 5, 5, true, Math.PI * 2 / 3);
+// Bridges between platforms (narrow)
+function addBridge(x1, z1, x2, z2, y) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const len = Math.sqrt(dx * dx + dz * dz);
+  const bridge = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 0.2, len),
+    new THREE.MeshStandardMaterial({ color: 0x3a3a4e, roughness: 0.85 })
+  );
+  bridge.position.set((x1 + x2) / 2, y, (z1 + z2) / 2);
+  bridge.rotation.y = Math.atan2(dx, dz);
+  bridge.castShadow = true;
+  scene.add(bridge);
+  // Rail posts
+  for (let t = 0.2; t < 1; t += 0.3) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 4),
+      new THREE.MeshStandardMaterial({ color: 0x555577 }));
+    post.position.set(x1 + dx * t + 0.6 * Math.cos(Math.atan2(dx, dz)), y + 0.4, z1 + dz * t - 0.6 * Math.sin(Math.atan2(dx, dz)));
+    scene.add(post);
+  }
+}
+addBridge(-8, -8, -15, -15, 3);
+addBridge(8, 8, 15, 15, 3);
 
-// Torso (smaller, higher)
-const bodyGeo = new THREE.CapsuleGeometry(0.35, 0.6, 8, 16);
-const bodyMat = new THREE.MeshStandardMaterial({ color: 0x4488ff, metalness: 0.3, roughness: 0.6 });
+// ─── PLAYER ── Anime girl model ───
+const playerGroup = new THREE.Group();
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xffe0c0, metalness: 0.05, roughness: 0.7 });
+const hairMat = new THREE.MeshStandardMaterial({ color: 0x1a0a2e, metalness: 0.2, roughness: 0.6 }); // dark purple hair
+const clothMat = new THREE.MeshStandardMaterial({ color: 0x222244, metalness: 0.2, roughness: 0.5 }); // dark uniform
+const accentMat = new THREE.MeshStandardMaterial({ color: 0xcc2255, metalness: 0.3, roughness: 0.4 }); // pink accents
+
+// Torso — slimmer, feminine
+const bodyGeo = new THREE.CapsuleGeometry(0.28, 0.5, 8, 16);
+const bodyMat = clothMat;
 const body = new THREE.Mesh(bodyGeo, bodyMat);
-body.position.y = 1.5;
+body.position.y = 1.45;
 body.castShadow = true;
 playerGroup.add(body);
 
-// "Seirin" text on back — built from canvas texture
+// Skirt
+const skirtGeo = new THREE.ConeGeometry(0.45, 0.5, 12, 1, true);
+const skirt = new THREE.Mesh(skirtGeo, accentMat);
+skirt.position.y = 1.05;
+skirt.rotation.x = Math.PI;
+playerGroup.add(skirt);
+
+// Head — bigger eyes style
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), skinMat);
+head.position.y = 2.05;
+head.castShadow = true;
+playerGroup.add(head);
+
+// Hair — long, flowing
+const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.27, 12, 12), hairMat);
+hairTop.position.y = 2.12;
+hairTop.scale.set(1.05, 1.1, 1.05);
+playerGroup.add(hairTop);
+// Side bangs
+const bangL = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.3, 6, 8), hairMat);
+bangL.position.set(-0.2, 1.9, 0.1);
+bangL.rotation.z = 0.2;
+playerGroup.add(bangL);
+const bangR = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.3, 6, 8), hairMat);
+bangR.position.set(0.2, 1.9, 0.1);
+bangR.rotation.z = -0.2;
+playerGroup.add(bangR);
+// Long back hair
+const backHair = new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.7, 8, 12), hairMat);
+backHair.position.set(0, 1.6, 0.18);
+playerGroup.add(backHair);
+// Hair ribbon
+const ribbon = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.08), accentMat);
+ribbon.position.set(0, 2.2, 0.15);
+playerGroup.add(ribbon);
+
+// Eyes (anime style — big, shiny)
+const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const eyeIrisMat = new THREE.MeshBasicMaterial({ color: 0xcc2266 }); // pink eyes
+const eyePupilMat = new THREE.MeshBasicMaterial({ color: 0x110022 });
+[-0.09, 0.09].forEach(x => {
+  const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeWhiteMat);
+  eyeW.position.set(x, 2.07, -0.2);
+  eyeW.scale.set(1, 1.3, 0.5);
+  playerGroup.add(eyeW);
+  const iris = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), eyeIrisMat);
+  iris.position.set(x, 2.07, -0.23);
+  iris.scale.set(1, 1.2, 0.5);
+  playerGroup.add(iris);
+  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), eyePupilMat);
+  pupil.position.set(x, 2.07, -0.245);
+  playerGroup.add(pupil);
+  // Eye shine
+  const shine = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  shine.position.set(x + 0.015, 2.09, -0.25);
+  playerGroup.add(shine);
+});
+
+// Mouth
+const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.01, 0.01), new THREE.MeshBasicMaterial({ color: 0xcc6677 }));
+mouth.position.set(0, 1.97, -0.23);
+playerGroup.add(mouth);
+
+// "Seirin" text on back
 const seirinCanvas = document.createElement('canvas');
-seirinCanvas.width = 256;
-seirinCanvas.height = 128;
+seirinCanvas.width = 256; seirinCanvas.height = 128;
 const ctx = seirinCanvas.getContext('2d');
 ctx.fillStyle = 'rgba(0,0,0,0)';
 ctx.fillRect(0, 0, 256, 128);
@@ -390,42 +520,40 @@ ctx.textBaseline = 'middle';
 ctx.fillText('Seirin', 128, 64);
 const seirinTex = new THREE.CanvasTexture(seirinCanvas);
 const seirinPlane = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.55, 0.25),
+  new THREE.PlaneGeometry(0.45, 0.2),
   new THREE.MeshBasicMaterial({ map: seirinTex, transparent: true, side: THREE.DoubleSide })
 );
-seirinPlane.position.set(0, 1.55, 0.37); // on the back
-seirinPlane.rotation.y = Math.PI; // face backwards
+seirinPlane.position.set(0, 1.5, 0.3);
+seirinPlane.rotation.y = Math.PI;
 playerGroup.add(seirinPlane);
 
-// Head
-const head = new THREE.Mesh(
-  new THREE.SphereGeometry(0.22, 8, 8),
-  new THREE.MeshStandardMaterial({ color: 0xffcc99, metalness: 0.1, roughness: 0.8 })
-);
-head.position.y = 2.1;
-head.castShadow = true;
-playerGroup.add(head);
-
-// Left leg
+// Legs (thigh-highs)
+const legMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, metalness: 0.2, roughness: 0.5 }); // dark stockings
 const leftLeg = new THREE.Group();
-const leftThigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.35, 6, 8), legMat);
-leftThigh.position.y = -0.2;
+const leftThigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.3, 6, 8), legMat);
+leftThigh.position.y = -0.15;
 leftLeg.add(leftThigh);
-const leftShin = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.35, 6, 8), legMat);
-leftShin.position.y = -0.55;
+const leftShin = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.3, 6, 8), legMat);
+leftShin.position.y = -0.48;
 leftLeg.add(leftShin);
-leftLeg.position.set(-0.15, 0.95, 0);
+// Boot
+const leftBoot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.15), accentMat);
+leftBoot.position.y = -0.65;
+leftLeg.add(leftBoot);
+leftLeg.position.set(-0.12, 0.85, 0);
 playerGroup.add(leftLeg);
 
-// Right leg
 const rightLeg = new THREE.Group();
-const rightThigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.35, 6, 8), legMat);
-rightThigh.position.y = -0.2;
+const rightThigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.3, 6, 8), legMat);
+rightThigh.position.y = -0.15;
 rightLeg.add(rightThigh);
-const rightShin = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.35, 6, 8), legMat);
-rightShin.position.y = -0.55;
+const rightShin = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.3, 6, 8), legMat);
+rightShin.position.y = -0.48;
 rightLeg.add(rightShin);
-rightLeg.position.set(0.15, 0.95, 0);
+const rightBoot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.15), accentMat);
+rightBoot.position.y = -0.65;
+rightLeg.add(rightBoot);
+rightLeg.position.set(0.12, 0.85, 0);
 playerGroup.add(rightLeg);
 
 // Sword — detailed katana-style
@@ -745,22 +873,50 @@ let killCount = 0;
 
 function createEnemy(x, z) {
   const group = new THREE.Group();
-  const scale = 0.8 + Math.random() * 0.5;
+
+  // Visual tier based on wave
+  const tier = waveNum <= 3 ? 0 : waveNum <= 6 ? 1 : waveNum <= 10 ? 2 : 3;
+  const TIERS = [
+    // Tier 0 (wave 1-3): small, green/brown goblins
+    { scale: [0.6, 0.8], bodyColor: [0.2, 0.4, 0.15], hornSize: 0.3, eyeColor: 0x88ff44, eyeGlow: 0x44aa22, name: 'Goblin' },
+    // Tier 1 (wave 4-6): medium, red/orange demons
+    { scale: [0.8, 1.1], bodyColor: [0.7, 0.15, 0.05], hornSize: 0.5, eyeColor: 0xffaa00, eyeGlow: 0xff6600, name: 'Demon' },
+    // Tier 2 (wave 7-10): big, purple void walkers
+    { scale: [1.0, 1.3], bodyColor: [0.35, 0.1, 0.5], hornSize: 0.7, eyeColor: 0xcc44ff, eyeGlow: 0x8800cc, name: 'Voidwalker' },
+    // Tier 3 (wave 11+): huge, black/red infernal knights
+    { scale: [1.2, 1.5], bodyColor: [0.15, 0.02, 0.02], hornSize: 0.9, eyeColor: 0xff2200, eyeGlow: 0xff0000, name: 'Infernal' },
+  ];
+  const t = TIERS[tier];
+  const scale = t.scale[0] + Math.random() * (t.scale[1] - t.scale[0]);
 
   const ebody = new THREE.CapsuleGeometry(0.5 * scale, 1.2 * scale, 8, 16);
-  const r = 0.6 + Math.random() * 0.4;
-  const g = Math.random() * 0.2;
-  const b = Math.random() * 0.3;
+  const bc = t.bodyColor;
   const emat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(r, g, b), metalness: 0.3, roughness: 0.6,
+    color: new THREE.Color(bc[0] + Math.random() * 0.1, bc[1] + Math.random() * 0.05, bc[2] + Math.random() * 0.1),
+    metalness: 0.2 + tier * 0.1, roughness: 0.7 - tier * 0.1,
   });
+  if (tier >= 2) { emat.emissive = new THREE.Color(bc[0] * 0.3, bc[1] * 0.3, bc[2] * 0.3); emat.emissiveIntensity = 0.3; }
   const emesh = new THREE.Mesh(ebody, emat);
   emesh.position.y = 1.3 * scale;
   emesh.castShadow = true;
   group.add(emesh);
 
-  const hornGeo = new THREE.ConeGeometry(0.1 * scale, 0.5 * scale, 8);
-  const hornMat = new THREE.MeshStandardMaterial({ color: 0x442222 });
+  // Spikes/armor for higher tiers
+  if (tier >= 2) {
+    for (let si = 0; si < tier * 2; si++) {
+      const spike = new THREE.Mesh(
+        new THREE.ConeGeometry(0.06 * scale, 0.25 * scale, 4),
+        new THREE.MeshStandardMaterial({ color: tier === 3 ? 0x220000 : 0x330033, metalness: 0.7 })
+      );
+      const sa = (si / (tier * 2)) * Math.PI * 2;
+      spike.position.set(Math.cos(sa) * 0.4 * scale, (1.0 + Math.random() * 0.6) * scale, Math.sin(sa) * 0.4 * scale);
+      spike.rotation.set(Math.cos(sa) * 0.5, 0, -Math.sin(sa) * 0.5);
+      group.add(spike);
+    }
+  }
+
+  const hornGeo = new THREE.ConeGeometry(0.1 * scale, t.hornSize * scale, 8);
+  const hornMat = new THREE.MeshStandardMaterial({ color: tier >= 2 ? 0x110011 : 0x442222, metalness: tier * 0.15 });
   const hornL = new THREE.Mesh(hornGeo, hornMat);
   hornL.position.set(-0.3 * scale, 2.3 * scale, 0);
   hornL.rotation.z = 0.3;
@@ -771,7 +927,7 @@ function createEnemy(x, z) {
   group.add(hornR);
 
   const eyeGeo = new THREE.SphereGeometry(0.08 * scale, 8, 8);
-  const eyeMat = new THREE.MeshStandardMaterial({ color: 0xffff00, emissive: 0xffaa00, emissiveIntensity: 2 });
+  const eyeMat = new THREE.MeshStandardMaterial({ color: t.eyeColor, emissive: t.eyeGlow, emissiveIntensity: 1.5 + tier * 0.5 });
   const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
   eyeL.position.set(-0.15 * scale, 1.9 * scale, 0.4 * scale);
   group.add(eyeL);
@@ -864,7 +1020,7 @@ function createEnemy(x, z) {
   // HP starts low, grows ~20% per wave
   const baseHp = 80 + Math.random() * 40;
   const hp = Math.round(baseHp * (1 + (waveNum - 1) * 0.2));
-  const name = ENEMY_NAMES[Math.floor(Math.random() * ENEMY_NAMES.length)];
+  const name = t.name;
   const dmg = Math.round((4 + waveNum * 1.5) * (0.8 + Math.random() * 0.4));
   group.position.set(x, 0, z);
   group.userData = {
@@ -2037,6 +2193,25 @@ function animate() {
   // ── Jump physics ──
   player.velocityY += GRAVITY * dt;
   playerGroup.position.y += player.velocityY * dt;
+
+  // Platform collision — stand on top of platforms
+  let onPlatform = false;
+  if (player.velocityY <= 0) {
+    for (const p of platforms) {
+      const dx = Math.abs(playerGroup.position.x - p.x);
+      const dz = Math.abs(playerGroup.position.z - p.z);
+      if (dx < p.hw && dz < p.hd) {
+        if (playerGroup.position.y <= p.y && playerGroup.position.y > p.y - 1.5) {
+          playerGroup.position.y = p.y;
+          player.velocityY = 0;
+          player.grounded = true;
+          player.jumpsLeft = 2;
+          onPlatform = true;
+          break;
+        }
+      }
+    }
+  }
 
   player.slamCd -= dt;
   if (playerGroup.position.y <= 0) {
