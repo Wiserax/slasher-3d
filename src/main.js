@@ -936,7 +936,7 @@ function createEnemy(x, z) {
   group.add(eyeR);
 
   // Arms
-  const armMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(r * 0.8, g * 0.8, b * 0.8), metalness: 0.3, roughness: 0.6 });
+  const armMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(bc[0] * 0.8, bc[1] * 0.8, bc[2] * 0.8), metalness: 0.3, roughness: 0.6 });
   // Right arm (weapon arm)
   const rightArm = new THREE.Group();
   const rUpperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.08 * scale, 0.35 * scale, 6, 8), armMat);
