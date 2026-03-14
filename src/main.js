@@ -15,6 +15,111 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 document.body.appendChild(renderer.domElement);
 
+// ─── SOUND (Web Audio API — procedural) ───
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playSound(type) {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const now = audioCtx.currentTime;
+  const gain = audioCtx.createGain();
+  gain.connect(audioCtx.destination);
+
+  if (type === 'slash') {
+    // Quick high-freq swoosh
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.12);
+  } else if (type === 'hit') {
+    // Impact thud
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.15);
+    // Noise burst
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.06, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buf;
+    const ng = audioCtx.createGain();
+    ng.gain.setValueAtTime(0.2, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    noise.connect(ng); ng.connect(audioCtx.destination);
+    noise.start(now); noise.stop(now + 0.06);
+  } else if (type === 'heavy') {
+    // Deep swoosh + bass
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(400, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.25);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.25);
+  } else if (type === 'slam') {
+    // Big boom
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(100, now);
+    osc.frequency.exponentialRampToValueAtTime(30, now + 0.3);
+    gain.gain.setValueAtTime(0.4, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.3);
+  } else if (type === 'parry') {
+    // Metallic clang
+    const osc = audioCtx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(2000, now);
+    osc.frequency.exponentialRampToValueAtTime(800, now + 0.08);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.15);
+  } else if (type === 'enemyHit') {
+    // Dull thump
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(200, now);
+    osc.frequency.exponentialRampToValueAtTime(80, now + 0.1);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.1);
+  } else if (type === 'projectile') {
+    // Magical whoosh
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, now);
+    osc.frequency.exponentialRampToValueAtTime(1200, now + 0.1);
+    osc.frequency.exponentialRampToValueAtTime(400, now + 0.2);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.2);
+  } else if (type === 'death') {
+    // Death crunch
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buf;
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    noise.connect(gain); noise.start(now); noise.stop(now + 0.15);
+  } else if (type === 'playerHit') {
+    // Sharp pain sound
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(300, now);
+    osc.frequency.exponentialRampToValueAtTime(100, now + 0.15);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    osc.connect(gain); osc.start(now); osc.stop(now + 0.15);
+  }
+}
+
 // ─── SKY ───
 const skyGeo = new THREE.SphereGeometry(150, 32, 16);
 const skyCanvas = document.createElement('canvas');
@@ -1134,18 +1239,55 @@ function createEnemy(x, z) {
   const enemyType = typeRoll < 0.7 ? 'melee' : typeRoll < 0.9 ? 'ranged' : 'fast';
 
   if (enemyType === 'ranged') {
-    // Ranged indicator — glowing orb in hand
-    const orbMat = new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.8 });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.12 * scale, 8, 8), orbMat);
-    orb.position.set(0, -0.3 * scale, 0.15 * scale);
-    weaponGroup.add(orb);
-    // Mark body with different emissive
-    emesh.material.emissive = new THREE.Color(0x330022);
-    emesh.material.emissiveIntensity = 0.4;
+    // Distinct look: floating robe, glowing hands, staff
+    emesh.material = new THREE.MeshStandardMaterial({
+      color: 0x331144, metalness: 0.2, roughness: 0.5,
+      emissive: new THREE.Color(0x220033), emissiveIntensity: 0.5,
+    });
+    // Robe bottom (wide cone)
+    const robe = new THREE.Mesh(
+      new THREE.ConeGeometry(0.6 * scale, 0.8 * scale, 8, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0x220033, roughness: 0.7 })
+    );
+    robe.position.y = 0.6 * scale;
+    robe.rotation.x = Math.PI;
+    group.add(robe);
+    // Staff in hand
+    const staff = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03 * scale, 0.03 * scale, 1.8 * scale, 6),
+      new THREE.MeshStandardMaterial({ color: 0x553366, metalness: 0.5 })
+    );
+    staff.position.set(0.4 * scale, 1.2 * scale, 0.2 * scale);
+    group.add(staff);
+    // Orb on staff top
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.15 * scale, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.8 })
+    );
+    orb.position.set(0.4 * scale, 2.1 * scale, 0.2 * scale);
+    group.add(orb);
+    const orbLight = new THREE.PointLight(0xff44aa, 0.4, 4);
+    orbLight.position.copy(orb.position);
+    group.add(orbLight);
+    // Floating (hover above ground)
+    group.userData.floats = true;
   }
   if (enemyType === 'fast') {
-    // Lean, lighter color
-    emesh.material.color.lerp(new THREE.Color(0.8, 0.8, 0.2), 0.3);
+    // Lean, spiky, bright accent
+    emesh.material = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(0.6, 0.6, 0.1), metalness: 0.4, roughness: 0.4,
+      emissive: new THREE.Color(0.15, 0.15, 0), emissiveIntensity: 0.3,
+    });
+    // Tail spikes
+    for (let si = 0; si < 3; si++) {
+      const spike = new THREE.Mesh(
+        new THREE.ConeGeometry(0.05 * scale, 0.4 * scale, 4),
+        new THREE.MeshStandardMaterial({ color: 0xaaaa22, metalness: 0.5 })
+      );
+      spike.position.set(0, (0.8 + si * 0.3) * scale, 0.4 * scale);
+      spike.rotation.x = 0.8;
+      group.add(spike);
+    }
   }
 
   group.position.set(x, 0, z);
@@ -1702,6 +1844,7 @@ function damageEnemy(e, baseDmgMin, baseDmgMax, critMult, cssClass) {
     updatePlayerHpBar();
   }
 
+  playSound('hit');
   // Flash white
   const mat = e.userData.mesh.material;
   mat.emissive.set(0xffffff);
@@ -1754,6 +1897,7 @@ function damagePlayer(amount, enemyPos) {
   // Parry check
   if (player.isParrying && player.parryTimer > 0) {
     player.parrySuccess = true;
+    playSound('parry');
     player.isParrying = false;
     player.parryTimer = 0;
     player.iFrames = 0.3;
@@ -1769,6 +1913,7 @@ function damagePlayer(amount, enemyPos) {
     return;
   }
 
+  playSound('playerHit');
   // No passive shield — damage goes straight to HP
   player.hp = Math.max(0, player.hp - amount);
   player.iFrames = 0.5;
@@ -1884,6 +2029,7 @@ document.getElementById('respawn-btn').addEventListener('click', () => {
 
 function killEnemy(e) {
   e.userData.alive = false;
+  playSound('death');
   killCount++;
   document.getElementById('kill-counter').textContent = `KILLS: ${killCount} | WAVE: ${waveNum}`;
 
@@ -2078,10 +2224,12 @@ const ALL_UPGRADES = [
   { icon: '&#9733;', title: 'Seirin\'s Blade', desc: 'Combo finisher hits 2x, +50% melee', rarity: 'legendary', apply: () => { player.finisherBoost = true; player.bonusDmg += 15; updateStatsDisplay(); } },
 ];
 
-let upgradeScreenOpen = false;
+const upgradeScreenOpen = false; // disabled
 
 function showUpgradeCards() {
-  upgradeScreenOpen = true;
+  // Disabled — upgrades come from lootboxes only
+  return;
+  /* old code below */
   document.exitPointerLock();
   const screen = document.getElementById('level-up-screen');
   const container = document.getElementById('card-container');
@@ -2520,6 +2668,7 @@ function animate() {
     if (player.isSlamming) {
       player.isSlamming = false;
       player.slamCd = SLAM_COOLDOWN;
+      playSound('slam');
       screenShake = 0.2;
       // VFX — shockwave ring + ground crack
       const slamPos = playerGroup.position.clone();
@@ -2647,6 +2796,7 @@ function animate() {
     // Hit registration
     if (t >= 0.35 && !hitRegistered) {
       hitRegistered = true;
+      playSound('slash');
       if (comboCount === 2) {
         // Finisher hits all in range (small AoE)
         enemies.forEach(e => {
@@ -2718,6 +2868,7 @@ function animate() {
     // Hit at midpoint of spin
     if (t >= 0.45 && !heavyHitRegistered) {
       heavyHitRegistered = true;
+      playSound('heavy');
       const pPos = playerGroup.position;
       enemies.forEach(e => {
         if (!e.userData.alive) return;
@@ -2725,9 +2876,15 @@ function animate() {
         if (d < HEAVY_RANGE) {
           const hd = getHeavyDmg();
           damageEnemy(e, hd.min, hd.max, 3.0, 'skill-heavy');
+          // JUGGLE — launch enemy upward (DMC style)
+          if (!e.userData.isBoss) {
+            e.userData.juggleVelY = 8 + Math.random() * 4;
+            e.userData.isJuggled = true;
+            e.userData.hitstun = 1.0; // long stun while airborne
+          }
         }
       });
-      screenShake = 0.1;
+      screenShake = 0.12;
       // Ground ring VFX
       const hRing = new THREE.Mesh(
         new THREE.RingGeometry(0.3, HEAVY_RANGE, 32),
@@ -2825,7 +2982,19 @@ function animate() {
         e.userData.knockVelX *= 0.9;
         e.userData.knockVelZ *= 0.9;
       }
-      return; // skip attack while stunned
+      // Juggle physics
+      if (e.userData.isJuggled) {
+        e.userData.juggleVelY -= 15 * dt; // gravity
+        e.position.y += e.userData.juggleVelY * dt;
+        e.rotation.x += dt * 3; // spin while airborne
+        if (e.position.y <= 0) {
+          e.position.y = 0;
+          e.userData.isJuggled = false;
+          e.userData.juggleVelY = 0;
+          e.rotation.x = 0;
+        }
+      }
+      return;
     }
 
     // Attack
@@ -2848,6 +3017,7 @@ function animate() {
         scene.add(proj);
         // Track projectile
         if (!window._projectiles) window._projectiles = [];
+        playSound('projectile');
         window._projectiles.push({
           mesh: proj, dir: projDir, speed: 8, damage: e.userData.damage,
           timer: 0, maxTime: 4,
@@ -2943,10 +3113,14 @@ function animate() {
       }
     }
 
-    // Idle bob
+    // Idle bob / float
     if (e.userData.mesh) {
+      const bobBase = e.userData.floats ? 0.6 : 0; // mages float
       e.userData.mesh.position.y = 1.3 * e.userData.scale +
-        Math.sin(Date.now() * 0.003 + e.id) * 0.1;
+        Math.sin(Date.now() * 0.003 + e.id) * (e.userData.floats ? 0.25 : 0.1);
+      if (e.userData.floats && !e.userData.isJuggled) {
+        e.position.y = bobBase + Math.sin(Date.now() * 0.002 + e.id) * 0.15;
+      }
     }
   });
 
