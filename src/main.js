@@ -457,7 +457,7 @@ function updateCaves() {
         const rewards = [
           () => { player.bonusHp += 15; player.maxHp = player.baseMaxHp + player.bonusHp; player.hp = player.maxHp; updatePlayerHpBar(); showPickupText('RELIC: +15 Max HP', 'hp'); },
           () => { player.bonusDmg += 8; showPickupText('RELIC: +8% DMG', 'dmg'); updateStatsDisplay(); },
-          () => { player.shieldMaxHp += 20; player.shieldHp = player.shieldMaxHp; updateShieldBar(); showPickupText('RELIC: +20 Shield', 'hp'); },
+          () => { player.hp = player.maxHp; updatePlayerHpBar(); showPickupText('RELIC: Full Heal', 'hp'); },
         ];
         rewards[Math.floor(Math.random() * rewards.length)]();
         // Hide relic
@@ -737,10 +737,9 @@ const player = {
   iFrames: 0,
   bonusHp: 0,
   bonusDmg: 0,
-  // Shield
+  // Shield (parry only, no passive)
   shieldHp: 0,
   shieldMaxHp: 0,
-  shieldRegenTimer: 0,
   // Dash
   isDashing: false,
   dashTimer: 0,
@@ -1125,11 +1124,11 @@ function createEnemy(x, z) {
   }
   rightArm.add(weaponGroup);
 
-  // HP starts low, grows ~20% per wave
-  const baseHp = 80 + Math.random() * 40;
-  const hp = Math.round(baseHp * (1 + (waveNum - 1) * 0.2));
+  // HP: wave1=60, wave5=130, wave10=220
+  const hp = Math.round((40 + waveNum * 18) * (0.9 + Math.random() * 0.2));
   const name = t.name;
-  const dmg = Math.round((4 + waveNum * 1.5) * (0.8 + Math.random() * 0.4));
+  // DMG: wave1=6, wave5=14, wave10=24
+  const dmg = Math.round((4 + waveNum * 2) * (0.9 + Math.random() * 0.2));
   group.position.set(x, 0, z);
   group.userData = {
     maxHp: hp,
@@ -1207,10 +1206,11 @@ function createBoss(x, z) {
   bossLight.position.set(0, 3 * scale, 0);
   group.add(bossLight);
 
-  // Boss HP = ~10x regular enemy of that wave
-  const hp = Math.round(800 * (1 + (waveNum - 1) * 0.25));
+  // Boss = ~8x regular enemy HP
+  const hp = Math.round((300 + waveNum * 150));
   const name = BOSS_NAMES[Math.floor(Math.random() * BOSS_NAMES.length)];
-  const dmg = Math.round((10 + waveNum * 3) * (0.8 + Math.random() * 0.4));
+  // Boss dmg = ~3x regular
+  const dmg = Math.round((12 + waveNum * 5));
   group.position.set(x, 0, z);
   group.userData = {
     maxHp: hp,
@@ -1241,8 +1241,10 @@ function createBoss(x, z) {
 function spawnWave() {
   const isBossWave = waveNum % 5 === 0;
 
+  // Deterministic enemy count: wave 1=3, wave 2=4, wave 3=5, etc., cap at 12
+  const baseCount = Math.min(2 + waveNum, 12);
+
   if (isBossWave) {
-    // Boss wave: 1 boss + a few minions
     const boss = createBoss(
       playerGroup.position.x + 15,
       playerGroup.position.z
@@ -1250,10 +1252,11 @@ function spawnWave() {
     enemies.push(boss);
     scene.add(boss);
 
-    const minionCount = 2 + Math.floor(waveNum / 5);
+    // Boss wave: fewer minions (half normal)
+    const minionCount = Math.floor(baseCount / 2);
     for (let i = 0; i < minionCount; i++) {
-      const angle = (i / minionCount) * Math.PI * 2 + Math.random() * 0.5;
-      const dist = 12 + Math.random() * 8;
+      const angle = (i / minionCount) * Math.PI * 2;
+      const dist = 12 + i * 2;
       const e = createEnemy(
         playerGroup.position.x + Math.sin(angle) * dist,
         playerGroup.position.z + Math.cos(angle) * dist
@@ -1271,9 +1274,9 @@ function spawnWave() {
       banner.style.color = '';
     }, 3000);
   } else {
-    const count = 4 + Math.min(waveNum, 8);
+    const count = baseCount;
     for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+      const angle = (i / count) * Math.PI * 2;
       const dist = 10 + Math.random() * 10;
       const e = createEnemy(
         playerGroup.position.x + Math.sin(angle) * dist,
@@ -1746,25 +1749,8 @@ function damagePlayer(amount, enemyPos) {
     return;
   }
 
-  // Shield absorbs damage first
-  let remaining = amount;
-  if (player.shieldHp > 0) {
-    const absorbed = Math.min(player.shieldHp, remaining);
-    player.shieldHp -= absorbed;
-    remaining -= absorbed;
-    updateShieldBar();
-    // Blue flash for shield hit
-    if (remaining === 0) {
-      const pPos2 = playerGroup.position.clone();
-      pPos2.y += 2.8;
-      spawnDamageNumber(absorbed, pPos2, false, 'shield-hit');
-    }
-  }
-  if (remaining <= 0) {
-    player.iFrames = 0.3;
-    return;
-  }
-  player.hp = Math.max(0, player.hp - remaining);
+  // No passive shield — damage goes straight to HP
+  player.hp = Math.max(0, player.hp - amount);
   player.iFrames = 0.5;
 
   // Red vignette flash
@@ -1844,9 +1830,19 @@ function respawnPlayer() {
   player.jumpsLeft = 2;
   player.shieldHp = 0;
   player.shieldMaxHp = 0;
+  player.lifesteal = 0;
+  player.bonusDmg = 0;
+  player.bonusHp = 0;
+  player.maxHp = player.baseMaxHp;
+  player.critBonus = 0;
+  player.doubleStrike = 0;
+  player.dashCdMod = 1;
+  player.extraChains = 0;
+  player.finisherBoost = false;
   playerGroup.position.set(0, 0, 0);
   updatePlayerHpBar();
   updateShieldBar();
+  updateStatsDisplay();
   document.getElementById('death-screen').classList.remove('show');
 
   // Clear all enemies and loot
@@ -2021,15 +2017,8 @@ function killEnemy(e) {
       const waveEnemiesLeft = enemies.filter(en => en.userData.alive && !en.userData.isElite).length;
       if (waveEnemiesLeft === 0) {
         waveNum++;
-        player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.3));
-        if (player.shieldMaxHp === 0) {
-          grantShield(20);
-          showPickupText('SHIELD UNLOCKED!', 'hp');
-        } else {
-          player.shieldMaxHp += 3;
-          player.shieldHp = player.shieldMaxHp;
-          updateShieldBar();
-        }
+        // Small heal between waves (20%, not full)
+        player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.2));
         updatePlayerHpBar();
         document.getElementById('kill-counter').textContent = `KILLS: ${killCount} | WAVE: ${waveNum}`;
         renderLeaderboard(killCount, waveNum, false);
@@ -2045,15 +2034,15 @@ const ALL_UPGRADES = [
   // Common
   { icon: '&#10084;', title: '+20 Max HP', desc: 'Increases maximum health by 20', rarity: 'common', apply: () => { player.bonusHp += 20; player.maxHp = player.baseMaxHp + player.bonusHp; player.hp = Math.min(player.hp + 20, player.maxHp); updatePlayerHpBar(); } },
   { icon: '&#9876;', title: '+10% DMG', desc: 'All attacks deal 10% more damage', rarity: 'common', apply: () => { player.bonusDmg += 10; updateStatsDisplay(); } },
-  { icon: '&#128737;', title: '+15 Shield', desc: 'Increases max shield by 15', rarity: 'common', apply: () => { player.shieldMaxHp += 15; player.shieldHp = player.shieldMaxHp; updateShieldBar(); } },
-  { icon: '&#9829;', title: 'Full Heal', desc: 'Restore all HP and shield', rarity: 'common', apply: () => { player.hp = player.maxHp; player.shieldHp = player.shieldMaxHp; updatePlayerHpBar(); updateShieldBar(); } },
+  { icon: '&#9829;', title: 'Heal 50%', desc: 'Restore 50% of max HP', rarity: 'common', apply: () => { player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.5)); updatePlayerHpBar(); } },
+  { icon: '&#9733;', title: '+5% Crit Chance', desc: 'Slightly more critical hits', rarity: 'common', apply: () => { player.critBonus = (player.critBonus || 0) + 0.05; } },
   { icon: '&#8680;', title: 'Swift Dash', desc: 'Dash cooldown -30%', rarity: 'common', apply: () => { /* will be checked in dash */ player.dashCdMod = (player.dashCdMod || 1) * 0.7; } },
   // Rare
   { icon: '&#9733;', title: '+25% Crit DMG', desc: 'Critical hits deal even more damage', rarity: 'rare', apply: () => { player.critBonus = (player.critBonus || 0) + 0.25; } },
   { icon: '&#10052;', title: 'Frost Mastery', desc: 'Frost Nova CD -2s, +30% dmg', rarity: 'rare', apply: () => { skills[1].cd = Math.max(1, skills[1].cd - 2); skills[1].baseDmgMin *= 1.3; skills[1].baseDmgMax *= 1.3; } },
   { icon: '&#9889;', title: 'Storm Chain +1', desc: 'Thunder chains to 1 extra enemy', rarity: 'rare', apply: () => { player.extraChains = (player.extraChains || 0) + 1; } },
-  { icon: '&#10010;', title: 'Bloodthirst', desc: 'Heal 5% of damage dealt', rarity: 'rare', apply: () => { player.lifesteal = (player.lifesteal || 0) + 0.05; } },
-  { icon: '&#128737;', title: 'Iron Shield', desc: '+30 Shield, auto-regen between waves', rarity: 'rare', apply: () => { player.shieldMaxHp += 30; player.shieldHp = player.shieldMaxHp; updateShieldBar(); } },
+  { icon: '&#10010;', title: 'Bloodthirst', desc: 'Heal 2% of damage dealt', rarity: 'epic', apply: () => { player.lifesteal = (player.lifesteal || 0) + 0.02; } },
+  { icon: '&#9876;', title: 'Sharpened Blade', desc: 'Melee range +1, combo faster', rarity: 'rare', apply: () => { skills.lmb.range += 1; } },
   // Epic
   { icon: '&#9876;', title: 'Double Strike', desc: '20% chance to hit twice', rarity: 'epic', apply: () => { player.doubleStrike = (player.doubleStrike || 0) + 0.2; } },
   { icon: '&#9762;', title: 'Cataclysm Power', desc: 'Ult CD -5s, +50% dmg', rarity: 'epic', apply: () => { skills[4].cd = Math.max(5, skills[4].cd - 5); skills[4].baseDmgMin *= 1.5; skills[4].baseDmgMax *= 1.5; } },
