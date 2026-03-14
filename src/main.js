@@ -1871,21 +1871,157 @@ function killEnemy(e) {
   killCount++;
   document.getElementById('kill-counter').textContent = `KILLS: ${killCount} | WAVE: ${waveNum}`;
 
-  const startY = e.position.y;
+  const deathPos = e.position.clone();
+  const eScale = e.userData.scale || 1;
+
+  // ── Slash split — clone body into two halves ──
+  const bodyMesh = e.userData.mesh;
+  const bodyColor = bodyMesh.material.color.clone();
+
+  // Top half flies up-right
+  const topHalf = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5 * eScale, 0.5 * eScale, 6, 8),
+    new THREE.MeshStandardMaterial({ color: bodyColor, metalness: 0.3, roughness: 0.6 })
+  );
+  topHalf.position.copy(deathPos);
+  topHalf.position.y += 1.8 * eScale;
+  scene.add(topHalf);
+
+  // Bottom half stays, tips over
+  const botHalf = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5 * eScale, 0.5 * eScale, 6, 8),
+    new THREE.MeshStandardMaterial({ color: bodyColor, metalness: 0.3, roughness: 0.6 })
+  );
+  botHalf.position.copy(deathPos);
+  botHalf.position.y += 0.8 * eScale;
+  scene.add(botHalf);
+
+  // Slash line between halves (bright flash)
+  const slashLine = new THREE.Mesh(
+    new THREE.PlaneGeometry(2 * eScale, 0.08),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, side: THREE.DoubleSide })
+  );
+  slashLine.position.copy(deathPos);
+  slashLine.position.y += 1.3 * eScale;
+  slashLine.rotation.y = Math.random() * Math.PI;
+  slashLine.rotation.z = (Math.random() - 0.5) * 0.5;
+  scene.add(slashLine);
+
+  // Blood particles
+  const bloodParticles = [];
+  for (let i = 0; i < 12; i++) {
+    const blood = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04 + Math.random() * 0.06, 4, 4),
+      new THREE.MeshBasicMaterial({ color: 0xaa0000 })
+    );
+    blood.position.copy(deathPos);
+    blood.position.y += 1.3 * eScale;
+    blood.userData.vel = new THREE.Vector3(
+      (Math.random() - 0.5) * 6,
+      2 + Math.random() * 4,
+      (Math.random() - 0.5) * 6
+    );
+    scene.add(blood);
+    bloodParticles.push(blood);
+  }
+
+  // Blood puddle on ground (grows)
+  const puddle = new THREE.Mesh(
+    new THREE.CircleGeometry(0.1, 12),
+    new THREE.MeshBasicMaterial({ color: 0x880000, transparent: true, opacity: 0.7 })
+  );
+  puddle.rotation.x = -Math.PI / 2;
+  puddle.position.set(deathPos.x, 0.03, deathPos.z);
+  scene.add(puddle);
+
+  // Hide original enemy immediately
+  e.visible = false;
+
   const deathStart = performance.now();
+  const topVelX = (Math.random() - 0.5) * 3;
+  const topVelZ = (Math.random() - 0.5) * 3;
+  let topVelY = 4;
+
   function deathAnim() {
-    const t = (performance.now() - deathStart) / 500;
-    if (t >= 1) {
+    const elapsed = (performance.now() - deathStart) / 1000; // seconds
+    const dt16 = 0.016;
+
+    if (elapsed < 2.5) {
+      // ── Phase 1 (0-0.3s): flash + split ──
+      if (elapsed < 0.3) {
+        slashLine.material.opacity = 1 - elapsed / 0.3;
+        const s = 1 + elapsed * 3;
+        slashLine.scale.set(s, s, s);
+      } else if (slashLine.parent) {
+        scene.remove(slashLine);
+        slashLine.geometry.dispose(); slashLine.material.dispose();
+      }
+
+      // ── Top half flies up then falls ──
+      topVelY -= 12 * dt16;
+      topHalf.position.x += topVelX * dt16;
+      topHalf.position.y += topVelY * dt16;
+      topHalf.position.z += topVelZ * dt16;
+      topHalf.rotation.x += 3 * dt16;
+      topHalf.rotation.z += 2 * dt16;
+      if (topHalf.position.y < 0.3) topHalf.position.y = 0.3;
+
+      // ── Bottom half tips over ──
+      if (botHalf.rotation.x < 1.5) botHalf.rotation.x += 2 * dt16;
+      botHalf.position.y = Math.max(0.3, botHalf.position.y - 1.5 * dt16);
+
+      // ── Blood particles ──
+      bloodParticles.forEach(b => {
+        if (!b.parent) return;
+        b.userData.vel.y -= 10 * dt16;
+        b.position.x += b.userData.vel.x * dt16;
+        b.position.y += b.userData.vel.y * dt16;
+        b.position.z += b.userData.vel.z * dt16;
+        if (b.position.y < 0.05) {
+          b.position.y = 0.05;
+          b.userData.vel.x *= 0.5;
+          b.userData.vel.z *= 0.5;
+          b.userData.vel.y = 0;
+        }
+      });
+
+      // ── Puddle grows ──
+      const puddleScale = Math.min(eScale * 1.5, elapsed * 3);
+      puddle.scale.set(puddleScale, puddleScale, puddleScale);
+
+      // ── Fade out after 1.5s ──
+      if (elapsed > 1.5) {
+        const fade = 1 - (elapsed - 1.5) / 1.0;
+        topHalf.material.opacity = fade;
+        topHalf.material.transparent = true;
+        botHalf.material.opacity = fade;
+        botHalf.material.transparent = true;
+        puddle.material.opacity = fade * 0.7;
+        bloodParticles.forEach(b => {
+          if (b.parent) { b.material.opacity = fade; b.material.transparent = true; }
+        });
+      }
+
+      requestAnimationFrame(deathAnim);
+    } else {
+      // ── Cleanup ──
+      [topHalf, botHalf, puddle].forEach(m => {
+        scene.remove(m);
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) m.material.dispose();
+      });
+      bloodParticles.forEach(b => {
+        scene.remove(b);
+        b.geometry.dispose(); b.material.dispose();
+      });
       scene.remove(e);
       const idx = enemies.indexOf(e);
       if (idx !== -1) enemies.splice(idx, 1);
-      // Only count wave enemies (not cave guards)
+      // Wave check
       const waveEnemiesLeft = enemies.filter(en => en.userData.alive && !en.userData.isElite).length;
       if (waveEnemiesLeft === 0) {
         waveNum++;
-        // Heal player between waves
         player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.3));
-        // Grant/recharge shield each wave
         if (player.shieldMaxHp === 0) {
           grantShield(20);
           showPickupText('SHIELD UNLOCKED!', 'hp');
@@ -1897,14 +2033,9 @@ function killEnemy(e) {
         updatePlayerHpBar();
         document.getElementById('kill-counter').textContent = `KILLS: ${killCount} | WAVE: ${waveNum}`;
         renderLeaderboard(killCount, waveNum, false);
-        // Show upgrade cards
         showUpgradeCards();
       }
-      return;
     }
-    e.scale.set(1 - t, 1 - t, 1 - t);
-    e.position.y = startY - t * 0.5;
-    requestAnimationFrame(deathAnim);
   }
   deathAnim();
 }
