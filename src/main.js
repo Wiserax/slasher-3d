@@ -1124,24 +1124,44 @@ function createEnemy(x, z) {
   }
   rightArm.add(weaponGroup);
 
-  // HP: wave1=60, wave5=130, wave10=220
-  const hp = Math.round((40 + waveNum * 18) * (0.9 + Math.random() * 0.2));
+  // HP x2: wave1=120, wave5=260, wave10=440
+  const hp = Math.round((80 + waveNum * 36) * (0.9 + Math.random() * 0.2));
   const name = t.name;
   // DMG: wave1=6, wave5=14, wave10=24
   const dmg = Math.round((4 + waveNum * 2) * (0.9 + Math.random() * 0.2));
+  // Enemy type: melee (70%), ranged (20%), fast (10%)
+  const typeRoll = Math.random();
+  const enemyType = typeRoll < 0.7 ? 'melee' : typeRoll < 0.9 ? 'ranged' : 'fast';
+
+  if (enemyType === 'ranged') {
+    // Ranged indicator — glowing orb in hand
+    const orbMat = new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.8 });
+    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.12 * scale, 8, 8), orbMat);
+    orb.position.set(0, -0.3 * scale, 0.15 * scale);
+    weaponGroup.add(orb);
+    // Mark body with different emissive
+    emesh.material.emissive = new THREE.Color(0x330022);
+    emesh.material.emissiveIntensity = 0.4;
+  }
+  if (enemyType === 'fast') {
+    // Lean, lighter color
+    emesh.material.color.lerp(new THREE.Color(0.8, 0.8, 0.2), 0.3);
+  }
+
   group.position.set(x, 0, z);
   group.userData = {
-    maxHp: hp,
-    hp,
+    maxHp: enemyType === 'ranged' ? Math.round(hp * 0.6) : enemyType === 'fast' ? Math.round(hp * 0.5) : hp,
+    hp: enemyType === 'ranged' ? Math.round(hp * 0.6) : enemyType === 'fast' ? Math.round(hp * 0.5) : hp,
     mesh: emesh,
-    weapon: rightArm, // animate the whole arm for attack
+    weapon: rightArm,
     leftArm,
     scale,
-    speed: 1.5 + Math.random() * 2,
-    name: `${name} Lv.${waveNum}`,
+    speed: enemyType === 'fast' ? 4 + Math.random() * 2 : enemyType === 'ranged' ? 1 + Math.random() : 1.5 + Math.random() * 2,
+    name: enemyType === 'ranged' ? `${name} Mage` : enemyType === 'fast' ? `${name} Scout` : `${name} Lv.${waveNum}`,
     alive: true,
+    enemyType,
     attackCd: 0,
-    attackRate: 1.0 + Math.random() * 0.5,
+    attackRate: enemyType === 'ranged' ? 2.0 + Math.random() * 0.5 : 1.0 + Math.random() * 0.5,
     damage: dmg,
     attackRange: 1.8,
     isAttacking: false,
@@ -2022,7 +2042,14 @@ function killEnemy(e) {
         updatePlayerHpBar();
         document.getElementById('kill-counter').textContent = `KILLS: ${killCount} | WAVE: ${waveNum}`;
         renderLeaderboard(killCount, waveNum, false);
-        showUpgradeCards();
+        // Rare lootbox on wave clear (30%)
+        if (Math.random() < 0.3) {
+          spawnLootAtPosition(
+            playerGroup.position.x + (Math.random() - 0.5) * 5,
+            playerGroup.position.z + (Math.random() - 0.5) * 5
+          );
+        }
+        setTimeout(spawnWave, 1500);
       }
     }
   }
@@ -2208,22 +2235,33 @@ function updateTargetBar() {
 }
 
 function updateSkillBar() {
-  for (const [key, skill] of Object.entries(skills)) {
-    const slot = document.getElementById(`slot-${key}`);
-    if (!slot) continue;
-    const overlay = slot.querySelector('.cooldown-overlay');
-    const cdText = slot.querySelector('.cooldown-text');
-    if (skill.timer > 0) {
-      overlay.style.height = (skill.timer / skill.cd) * 100 + '%';
-      cdText.textContent = Math.ceil(skill.timer);
-      slot.classList.add('on-cd');
-      slot.classList.remove('ready');
-    } else {
-      overlay.style.height = '0%';
-      cdText.textContent = '';
-      slot.classList.remove('on-cd');
-      slot.classList.add('ready');
-    }
+  // LMB slot
+  updateSlotCD('slot-lmb', skills.lmb.timer, skills.lmb.cd);
+  // Slam
+  updateSlotCD('slot-slam', player.slamCd, SLAM_COOLDOWN);
+  // Heavy
+  updateSlotCD('slot-heavy', heavyCd, HEAVY_COOLDOWN);
+  // Dash
+  const dashTotalCd = DASH_COOLDOWN * (player.dashCdMod || 1);
+  updateSlotCD('slot-dash', player.dashCd, dashTotalCd);
+  // Parry
+  updateSlotCD('slot-parry', player.parryCd, PARRY_COOLDOWN);
+}
+function updateSlotCD(id, timer, maxCd) {
+  const slot = document.getElementById(id);
+  if (!slot) return;
+  const overlay = slot.querySelector('.cooldown-overlay');
+  const cdText = slot.querySelector('.cooldown-text');
+  if (timer > 0) {
+    overlay.style.height = (timer / maxCd) * 100 + '%';
+    cdText.textContent = Math.ceil(timer);
+    slot.classList.add('on-cd');
+    slot.classList.remove('ready');
+  } else {
+    overlay.style.height = '0%';
+    cdText.textContent = '';
+    slot.classList.remove('on-cd');
+    slot.classList.add('ready');
   }
 }
 
@@ -2279,10 +2317,7 @@ renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (!pointerLocked || !player.alive) return;
-  if (e.code === 'Digit1') useSkill('1');
-  if (e.code === 'Digit2') useSkill('2');
-  if (e.code === 'Digit3') useSkill('3');
-  if (e.code === 'Digit4') useSkill('4');
+  // Skills removed — only melee, slam, dash, parry
   // Jump / double jump
   if (e.code === 'Space') {
     if (player.jumpsLeft > 0) {
@@ -2360,6 +2395,11 @@ function animate() {
     player.dashTimer -= dt;
     playerGroup.position.x += player.dashDirX * DASH_SPEED * dt;
     playerGroup.position.z += player.dashDirZ * DASH_SPEED * dt;
+    // Dash animation — body tilts horizontal
+    body.rotation.x = -1.3;
+    body.position.z = -0.4;
+    head.rotation.x = 0.8;
+    skirt.rotation.x = Math.PI + 0.5;
     // Spawn trail ghost
     if (Math.random() < 0.5) {
       const ghost = new THREE.Mesh(bodyGeo, dashGhostMat.clone());
@@ -2376,7 +2416,12 @@ function animate() {
       }
       fadeGhost();
     }
-    if (player.dashTimer <= 0) player.isDashing = false;
+    if (player.dashTimer <= 0) {
+      player.isDashing = false;
+      body.rotation.x = 0; body.position.z = 0;
+      head.rotation.x = 0;
+      skirt.rotation.x = Math.PI;
+    }
   }
 
   // ── Parry timer ──
@@ -2737,10 +2782,35 @@ function animate() {
     toPlayer.y = 0;
     const dist = toPlayer.length();
 
-    // Chase
-    if (dist > e.userData.attackRange) {
-      toPlayer.normalize();
-      e.position.addScaledVector(toPlayer, e.userData.speed * dt);
+    // Movement AI by type
+    if (e.userData.enemyType === 'ranged') {
+      // Ranged: keep distance 8-12, retreat if too close
+      if (dist < 7) {
+        toPlayer.normalize();
+        e.position.addScaledVector(toPlayer, -e.userData.speed * dt * 1.5); // run away
+      } else if (dist > 13) {
+        toPlayer.normalize();
+        e.position.addScaledVector(toPlayer, e.userData.speed * dt);
+      } else {
+        // Strafe sideways
+        const strafe = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize();
+        e.position.addScaledVector(strafe, e.userData.speed * dt * (Math.sin(Date.now() * 0.002 + e.id) > 0 ? 1 : -1));
+      }
+    } else if (e.userData.enemyType === 'fast') {
+      // Fast: zigzag approach
+      if (dist > e.userData.attackRange) {
+        toPlayer.normalize();
+        const zigzag = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x);
+        zigzag.multiplyScalar(Math.sin(Date.now() * 0.005 + e.id * 10) * 0.5);
+        toPlayer.add(zigzag).normalize();
+        e.position.addScaledVector(toPlayer, e.userData.speed * dt);
+      }
+    } else {
+      // Melee: straight chase
+      if (dist > e.userData.attackRange) {
+        toPlayer.normalize();
+        e.position.addScaledVector(toPlayer, e.userData.speed * dt);
+      }
     }
     e.lookAt(playerGroup.position.x, e.position.y, playerGroup.position.z);
     clampToArena(e.position);
@@ -2760,7 +2830,30 @@ function animate() {
 
     // Attack
     e.userData.attackCd -= dt;
-    if (dist <= e.userData.attackRange && e.userData.attackCd <= 0) {
+    const inAttackRange = e.userData.enemyType === 'ranged' ? dist < 15 : dist <= e.userData.attackRange;
+    if (inAttackRange && e.userData.attackCd <= 0) {
+      // Ranged: fire projectile instead
+      if (e.userData.enemyType === 'ranged') {
+        e.userData.attackCd = e.userData.attackRate;
+        const projDir = playerGroup.position.clone().sub(e.position);
+        projDir.y = 0; projDir.normalize();
+        const proj = new THREE.Mesh(
+          new THREE.SphereGeometry(0.2, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.9 })
+        );
+        proj.position.copy(e.position);
+        proj.position.y += 1.5 * (e.userData.scale || 1);
+        const projLight = new THREE.PointLight(0xff44aa, 0.5, 4);
+        proj.add(projLight);
+        scene.add(proj);
+        // Track projectile
+        if (!window._projectiles) window._projectiles = [];
+        window._projectiles.push({
+          mesh: proj, dir: projDir, speed: 8, damage: e.userData.damage,
+          timer: 0, maxTime: 4,
+        });
+        return; // skip melee attack
+      }
       e.userData.isAttacking = true;
       e.userData.attackTimer = 0;
       e.userData.attackHit = false;
@@ -2829,7 +2922,8 @@ function animate() {
       if (at >= 0.55 && !e.userData.attackHit) {
         e.userData.attackHit = true;
         const hitDist = playerGroup.position.distanceTo(e.position);
-        if (hitDist <= e.userData.attackRange + 0.3) {
+        const heightDiff = Math.abs(playerGroup.position.y - e.position.y);
+        if (hitDist <= e.userData.attackRange + 0.3 && heightDiff < 2.5) {
           damagePlayer(e.userData.damage, e.position);
         }
       }
@@ -2855,6 +2949,32 @@ function animate() {
         Math.sin(Date.now() * 0.003 + e.id) * 0.1;
     }
   });
+
+  // Projectiles (ranged enemies)
+  if (window._projectiles) {
+    for (let i = window._projectiles.length - 1; i >= 0; i--) {
+      const p = window._projectiles[i];
+      p.timer += dt;
+      p.mesh.position.x += p.dir.x * p.speed * dt;
+      p.mesh.position.z += p.dir.z * p.speed * dt;
+      // Bob up/down
+      p.mesh.position.y += Math.sin(p.timer * 8) * 0.02;
+      // Hit player?
+      const pDist = playerGroup.position.distanceTo(p.mesh.position);
+      const heightDiff = Math.abs(playerGroup.position.y - p.mesh.position.y + 1.5);
+      if (pDist < 1.2 && heightDiff < 2) {
+        damagePlayer(p.damage, p.mesh.position);
+        scene.remove(p.mesh);
+        window._projectiles.splice(i, 1);
+        continue;
+      }
+      // Timeout or out of arena
+      if (p.timer > p.maxTime || p.mesh.position.length() > ARENA_RADIUS + 5) {
+        scene.remove(p.mesh);
+        window._projectiles.splice(i, 1);
+      }
+    }
+  }
 
   // Caves
   updateCaves();
