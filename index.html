@@ -219,6 +219,67 @@
       }
       #death-screen button:hover { background: #ff4466; }
 
+      /* Level up cards */
+      #level-up-screen {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.75);
+        z-index: 90;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #level-up-screen.show { display: flex; }
+      #level-up-screen h2 {
+        color: #ffdd00;
+        font-size: 32px;
+        margin-bottom: 30px;
+        text-shadow: 0 0 20px #ffaa00;
+      }
+      #card-container {
+        display: flex;
+        gap: 20px;
+      }
+      .upgrade-card {
+        width: 180px;
+        padding: 20px 15px;
+        background: linear-gradient(135deg, #1a1a2e, #2a2a4e);
+        border: 2px solid #555;
+        border-radius: 12px;
+        cursor: pointer;
+        text-align: center;
+        transition: transform 0.15s, border-color 0.15s;
+        pointer-events: auto;
+      }
+      .upgrade-card:hover {
+        transform: translateY(-8px) scale(1.05);
+        border-color: #ffdd00;
+        box-shadow: 0 0 20px rgba(255,220,0,0.3);
+      }
+      .upgrade-card .card-icon {
+        font-size: 36px;
+        margin-bottom: 10px;
+      }
+      .upgrade-card .card-title {
+        color: #fff;
+        font-size: 15px;
+        margin-bottom: 8px;
+        font-family: 'Arial Black', sans-serif;
+      }
+      .upgrade-card .card-desc {
+        color: #aaa;
+        font-size: 11px;
+        font-family: monospace;
+        line-height: 1.4;
+      }
+      .upgrade-card.rarity-common { border-color: #888; }
+      .upgrade-card.rarity-rare { border-color: #4488ff; }
+      .upgrade-card.rarity-epic { border-color: #aa44ff; }
+      .upgrade-card.rarity-legendary { border-color: #ffaa00; }
+
       /* Wave banner */
       #wave-banner {
         position: fixed;
@@ -504,6 +565,11 @@
     <div id="hit-vignette"></div>
     <div id="wave-banner"></div>
 
+    <div id="level-up-screen">
+      <h2>WAVE CLEARED — CHOOSE UPGRADE</h2>
+      <div id="card-container"></div>
+    </div>
+
     <div id="death-screen">
       <h1>YOU DIED</h1>
       <p id="death-stats"></p>
@@ -514,35 +580,35 @@
     <div id="skill-bar">
       <div class="skill-slot lmb ready" id="slot-lmb">
         <span class="key">LMB</span>
-        <span class="icon">&nbsp;</span>
+        <span class="icon" style="color:#4488ff">&#9876;</span>
         <span class="name">Slash</span>
         <div class="cooldown-overlay"></div>
         <div class="cooldown-text"></div>
       </div>
       <div class="skill-slot ready" id="slot-1">
         <span class="key">1</span>
-        <span class="icon">&nbsp;</span>
+        <span class="icon" style="color:#44ddff">&#10052;</span>
         <span class="name">Frost Nova</span>
         <div class="cooldown-overlay"></div>
         <div class="cooldown-text"></div>
       </div>
       <div class="skill-slot ready" id="slot-2">
         <span class="key">2</span>
-        <span class="icon">&nbsp;</span>
+        <span class="icon" style="color:#ff4444">&#10010;</span>
         <span class="name">Blood Rend</span>
         <div class="cooldown-overlay"></div>
         <div class="cooldown-text"></div>
       </div>
       <div class="skill-slot ready" id="slot-3">
         <span class="key">3</span>
-        <span class="icon">&nbsp;</span>
+        <span class="icon" style="color:#aa66ff">&#9889;</span>
         <span class="name">Thunder</span>
         <div class="cooldown-overlay"></div>
         <div class="cooldown-text"></div>
       </div>
       <div class="skill-slot ult ready" id="slot-4">
         <span class="key">4</span>
-        <span class="icon">&nbsp;</span>
+        <span class="icon" style="color:#ffaa00">&#9762;</span>
         <span class="name">CATACLYSM</span>
         <div class="cooldown-overlay"></div>
         <div class="cooldown-text"></div>

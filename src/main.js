@@ -255,12 +255,19 @@ function createCave(x, z) {
     guards: [],
   };
 
-  // Spawn loot inside
-  const lootType = Math.random() < 0.5 ? 'hp' : 'dmg';
-  const lb = createLootBox(0, 0, lootType);
-  lb.position.set(0, 0, 0);
-  caveGroup.add(lb);
-  caveGroup.userData.lootBox = lb;
+  // Cave relic — special upgrade (not random lootbox)
+  const relicGeo = new THREE.OctahedronGeometry(0.35, 0);
+  const relicMat = new THREE.MeshStandardMaterial({
+    color: 0xffdd00, emissive: 0xffaa00, emissiveIntensity: 0.8, metalness: 0.8, roughness: 0.1,
+  });
+  const relic = new THREE.Mesh(relicGeo, relicMat);
+  relic.position.set(0, 0.8, -0.3);
+  caveGroup.add(relic);
+  const relicLight = new THREE.PointLight(0xffaa00, 0.5, 4);
+  relicLight.position.set(0, 1.2, -0.3);
+  caveGroup.add(relicLight);
+  caveGroup.userData.relic = relic;
+  caveGroup.userData.relicLight = relicLight;
 
   scene.add(caveGroup);
   caves.push(caveGroup);
@@ -275,19 +282,16 @@ for (let i = 0; i < 4; i++) {
 }
 
 function createCaveGuard(cave) {
-  // Elite enemy — bigger, purple, more HP
   const worldPos = new THREE.Vector3();
   cave.getWorldPosition(worldPos);
-  const g = createEnemy(worldPos.x, worldPos.z);
-  // Buff into elite
-  g.scale.set(1.8, 1.8, 1.8);
-  g.userData.maxHp = Math.round(g.userData.maxHp * 4);
+  const g = createEnemy(worldPos.x + (Math.random() - 0.5) * 4, worldPos.z + (Math.random() - 0.5) * 4);
+  g.scale.set(1.5, 1.5, 1.5);
+  g.userData.maxHp = Math.round(g.userData.maxHp * 2.5);
   g.userData.hp = g.userData.maxHp;
-  g.userData.damage = Math.round(g.userData.damage * 2.5);
-  g.userData.speed *= 0.7;
+  g.userData.damage = Math.round(g.userData.damage * 1.5);
+  g.userData.speed *= 0.8;
   g.userData.name = 'Cave Guardian';
   g.userData.isElite = true;
-  // Purple tint
   g.userData.mesh.material.color.set(0x6622aa);
   g.userData.mesh.material.emissive.set(0x330066);
   g.userData.mesh.material.emissiveIntensity = 0.3;
@@ -328,16 +332,29 @@ function updateCaves() {
       }
     }
 
-    // Allow loot pickup only after guards dead
-    if (cave.userData.guardDead && cave.userData.lootBox && cave.userData.lootBox.userData.alive) {
-      // Get loot box world position
-      const lbWorld = new THREE.Vector3();
-      cave.userData.lootBox.getWorldPosition(lbWorld);
-      const lbDist = playerGroup.position.distanceTo(lbWorld);
-      if (lbDist < 2.5) {
-        pickupLoot(cave.userData.lootBox);
+    // Relic bob
+    if (cave.userData.relic && !cave.userData.looted) {
+      cave.userData.relic.rotation.y += 0.03;
+      cave.userData.relic.position.y = 0.8 + Math.sin(Date.now() * 0.003) * 0.15;
+    }
+
+    // Allow relic pickup only after guards dead
+    if (cave.userData.guardDead && !cave.userData.looted) {
+      const relicWorld = new THREE.Vector3();
+      cave.userData.relic.getWorldPosition(relicWorld);
+      const relicDist = playerGroup.position.distanceTo(relicWorld);
+      if (relicDist < 2.5) {
         cave.userData.looted = true;
-        // Dim the crystal
+        // Give cave relic reward — strong but not OP
+        const rewards = [
+          () => { player.bonusHp += 15; player.maxHp = player.baseMaxHp + player.bonusHp; player.hp = player.maxHp; updatePlayerHpBar(); showPickupText('RELIC: +15 Max HP', 'hp'); },
+          () => { player.bonusDmg += 8; showPickupText('RELIC: +8% DMG', 'dmg'); updateStatsDisplay(); },
+          () => { player.shieldMaxHp += 20; player.shieldHp = player.shieldMaxHp; updateShieldBar(); showPickupText('RELIC: +20 Shield', 'hp'); },
+        ];
+        rewards[Math.floor(Math.random() * rewards.length)]();
+        // Hide relic
+        cave.userData.relic.visible = false;
+        if (cave.userData.relicLight) cave.userData.relicLight.intensity = 0;
         if (cave.userData.crystal) {
           cave.userData.crystal.material.emissiveIntensity = 0.2;
           cave.userData.crystal.material.opacity = 0.3;
@@ -844,9 +861,11 @@ function createEnemy(x, z) {
   }
   rightArm.add(weaponGroup);
 
-  const hp = Math.round((300 + Math.random() * 200) * (1 + waveNum * 0.3));
+  // HP starts low, grows ~20% per wave
+  const baseHp = 80 + Math.random() * 40;
+  const hp = Math.round(baseHp * (1 + (waveNum - 1) * 0.2));
   const name = ENEMY_NAMES[Math.floor(Math.random() * ENEMY_NAMES.length)];
-  const dmg = Math.round((5 + waveNum * 2) * (0.8 + Math.random() * 0.4));
+  const dmg = Math.round((4 + waveNum * 1.5) * (0.8 + Math.random() * 0.4));
   group.position.set(x, 0, z);
   group.userData = {
     maxHp: hp,
@@ -924,9 +943,10 @@ function createBoss(x, z) {
   bossLight.position.set(0, 3 * scale, 0);
   group.add(bossLight);
 
-  const hp = Math.round(5000 * (1 + waveNum * 0.5));
+  // Boss HP = ~10x regular enemy of that wave
+  const hp = Math.round(800 * (1 + (waveNum - 1) * 0.25));
   const name = BOSS_NAMES[Math.floor(Math.random() * BOSS_NAMES.length)];
-  const dmg = Math.round((25 + waveNum * 5) * (0.8 + Math.random() * 0.4));
+  const dmg = Math.round((10 + waveNum * 3) * (0.8 + Math.random() * 0.4));
   group.position.set(x, 0, z);
   group.userData = {
     maxHp: hp,
@@ -1382,9 +1402,18 @@ function damageEnemy(e, baseDmgMin, baseDmgMax, critMult, cssClass) {
   const isCrit = Math.random() < 0.3;
   const damage = Math.round(isCrit ? baseDamage * critMult : baseDamage);
 
-  // Apply player damage bonus
-  const finalDamage = Math.round(damage * (1 + player.bonusDmg / 100));
+  // Apply player damage bonus + crit bonus
+  const critExtra = isCrit ? (player.critBonus || 0) : 0;
+  const totalMult = (1 + player.bonusDmg / 100) * (1 + critExtra);
+  const finalDamage = Math.round(damage * totalMult);
   e.userData.hp = Math.max(0, e.userData.hp - finalDamage);
+
+  // Lifesteal
+  if (player.lifesteal && player.lifesteal > 0) {
+    const heal = Math.round(finalDamage * player.lifesteal);
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    updatePlayerHpBar();
+  }
 
   // Flash white
   const mat = e.userData.mesh.material;
@@ -1594,17 +1623,18 @@ function killEnemy(e) {
         player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.3));
         // Grant/recharge shield each wave
         if (player.shieldMaxHp === 0) {
-          grantShield(30);
+          grantShield(20);
           showPickupText('SHIELD UNLOCKED!', 'hp');
         } else {
-          player.shieldMaxHp += 5;
+          player.shieldMaxHp += 3;
           player.shieldHp = player.shieldMaxHp;
           updateShieldBar();
         }
         updatePlayerHpBar();
         document.getElementById('kill-counter').textContent = `KILLS: ${killCount} | WAVE: ${waveNum}`;
         renderLeaderboard(killCount, waveNum, false);
-        setTimeout(spawnWave, 1500);
+        // Show upgrade cards
+        showUpgradeCards();
       }
       return;
     }
@@ -1613,6 +1643,70 @@ function killEnemy(e) {
     requestAnimationFrame(deathAnim);
   }
   deathAnim();
+}
+
+// ─── UPGRADE CARD SYSTEM ───
+const ALL_UPGRADES = [
+  // Common
+  { icon: '&#10084;', title: '+20 Max HP', desc: 'Increases maximum health by 20', rarity: 'common', apply: () => { player.bonusHp += 20; player.maxHp = player.baseMaxHp + player.bonusHp; player.hp = Math.min(player.hp + 20, player.maxHp); updatePlayerHpBar(); } },
+  { icon: '&#9876;', title: '+10% DMG', desc: 'All attacks deal 10% more damage', rarity: 'common', apply: () => { player.bonusDmg += 10; updateStatsDisplay(); } },
+  { icon: '&#128737;', title: '+15 Shield', desc: 'Increases max shield by 15', rarity: 'common', apply: () => { player.shieldMaxHp += 15; player.shieldHp = player.shieldMaxHp; updateShieldBar(); } },
+  { icon: '&#9829;', title: 'Full Heal', desc: 'Restore all HP and shield', rarity: 'common', apply: () => { player.hp = player.maxHp; player.shieldHp = player.shieldMaxHp; updatePlayerHpBar(); updateShieldBar(); } },
+  { icon: '&#8680;', title: 'Swift Dash', desc: 'Dash cooldown -30%', rarity: 'common', apply: () => { /* will be checked in dash */ player.dashCdMod = (player.dashCdMod || 1) * 0.7; } },
+  // Rare
+  { icon: '&#9733;', title: '+25% Crit DMG', desc: 'Critical hits deal even more damage', rarity: 'rare', apply: () => { player.critBonus = (player.critBonus || 0) + 0.25; } },
+  { icon: '&#10052;', title: 'Frost Mastery', desc: 'Frost Nova CD -2s, +30% dmg', rarity: 'rare', apply: () => { skills[1].cd = Math.max(1, skills[1].cd - 2); skills[1].baseDmgMin *= 1.3; skills[1].baseDmgMax *= 1.3; } },
+  { icon: '&#9889;', title: 'Storm Chain +1', desc: 'Thunder chains to 1 extra enemy', rarity: 'rare', apply: () => { player.extraChains = (player.extraChains || 0) + 1; } },
+  { icon: '&#10010;', title: 'Bloodthirst', desc: 'Heal 5% of damage dealt', rarity: 'rare', apply: () => { player.lifesteal = (player.lifesteal || 0) + 0.05; } },
+  { icon: '&#128737;', title: 'Iron Shield', desc: '+30 Shield, auto-regen between waves', rarity: 'rare', apply: () => { player.shieldMaxHp += 30; player.shieldHp = player.shieldMaxHp; updateShieldBar(); } },
+  // Epic
+  { icon: '&#9876;', title: 'Double Strike', desc: '20% chance to hit twice', rarity: 'epic', apply: () => { player.doubleStrike = (player.doubleStrike || 0) + 0.2; } },
+  { icon: '&#9762;', title: 'Cataclysm Power', desc: 'Ult CD -5s, +50% dmg', rarity: 'epic', apply: () => { skills[4].cd = Math.max(5, skills[4].cd - 5); skills[4].baseDmgMin *= 1.5; skills[4].baseDmgMax *= 1.5; } },
+  { icon: '&#10084;', title: 'Berserker', desc: '+40% DMG but -20 Max HP', rarity: 'epic', apply: () => { player.bonusDmg += 40; player.bonusHp -= 20; player.maxHp = Math.max(50, player.baseMaxHp + player.bonusHp); player.hp = Math.min(player.hp, player.maxHp); updatePlayerHpBar(); updateStatsDisplay(); } },
+  // Legendary
+  { icon: '&#9733;', title: 'Seirin\'s Blade', desc: 'Combo finisher hits 2x, +50% melee', rarity: 'legendary', apply: () => { player.finisherBoost = true; player.bonusDmg += 15; updateStatsDisplay(); } },
+];
+
+let upgradeScreenOpen = false;
+
+function showUpgradeCards() {
+  upgradeScreenOpen = true;
+  document.exitPointerLock();
+  const screen = document.getElementById('level-up-screen');
+  const container = document.getElementById('card-container');
+  container.innerHTML = '';
+
+  // Pick 3 random upgrades (weighted by rarity)
+  const pool = [...ALL_UPGRADES];
+  const picked = [];
+  for (let i = 0; i < 3 && pool.length > 0; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(idx, 1)[0]);
+  }
+
+  picked.forEach(upgrade => {
+    const card = document.createElement('div');
+    card.className = `upgrade-card rarity-${upgrade.rarity}`;
+    card.innerHTML = `
+      <div class="card-icon">${upgrade.icon}</div>
+      <div class="card-title">${upgrade.title}</div>
+      <div class="card-desc">${upgrade.desc}</div>
+    `;
+    card.addEventListener('click', () => {
+      upgrade.apply();
+      hideUpgradeCards();
+    });
+    container.appendChild(card);
+  });
+
+  screen.classList.add('show');
+}
+
+function hideUpgradeCards() {
+  upgradeScreenOpen = false;
+  document.getElementById('level-up-screen').classList.remove('show');
+  renderer.domElement.requestPointerLock();
+  setTimeout(spawnWave, 800);
 }
 
 function useSkill(skillKey) {
@@ -1818,7 +1912,7 @@ document.addEventListener('keydown', (e) => {
     if (!player.isDashing && player.dashCd <= 0) {
       player.isDashing = true;
       player.dashTimer = DASH_DURATION;
-      player.dashCd = DASH_COOLDOWN;
+      player.dashCd = DASH_COOLDOWN * (player.dashCdMod || 1);
       player.iFrames = Math.max(player.iFrames, DASH_DURATION);
       // Dash in movement direction or forward
       const fw = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
@@ -1862,7 +1956,7 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (!player.alive) {
+  if (!player.alive || upgradeScreenOpen) {
     renderer.render(scene, camera);
     return;
   }
@@ -2068,10 +2162,12 @@ function animate() {
         }));
         arcMesh.position.copy(playerGroup.position);
         arcMesh.position.y += 1.5;
-        // Orient based on combo hit direction
-        if (comboCount === 0) { arcMesh.rotation.y = yaw; arcMesh.rotation.z = 0.3; }
-        else if (comboCount === 1) { arcMesh.rotation.y = yaw + Math.PI; arcMesh.rotation.z = -0.3; }
-        else { arcMesh.rotation.y = yaw; arcMesh.rotation.x = -0.5; }
+        // Orient FORWARD from player
+        const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+        arcMesh.position.addScaledVector(fwd, 1.0);
+        if (comboCount === 0) { arcMesh.rotation.y = yaw + Math.PI / 2; arcMesh.rotation.x = Math.PI / 2; }
+        else if (comboCount === 1) { arcMesh.rotation.y = yaw - Math.PI / 2; arcMesh.rotation.x = Math.PI / 2; }
+        else { arcMesh.rotation.y = yaw; arcMesh.rotation.x = Math.PI / 2; }
         scene.add(arcMesh);
         vfxObjects.push({ mesh: arcMesh, timer: 0, duration: 0.25, type: 'fadeOut' });
       }
