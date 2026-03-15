@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slasher 3D</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { overflow: hidden; background: #000; font-family: 'Arial Black', Impact, sans-serif; }
+      canvas { display: block; }
+
+      #ui {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: 10;
+      }
+
+      /* Target HP bar (top center) */
+      #target-bar {
+        position: fixed;
+        top: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 350px;
+        text-align: center;
+        z-index: 10;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      #target-bar.visible { opacity: 1; }
+      #target-bar.boss { width: 500px; }
+      #target-bar.boss #target-name {
+        color: #ff8800;
+        font-size: 22px;
+        text-shadow: 0 0 15px #ff4400, 0 0 30px #ff0000;
+      }
+      #target-bar.boss #target-hp-outer {
+        height: 22px;
+        border-color: #ff6600;
+      }
+      #target-bar.boss #target-hp-fill {
+        background: linear-gradient(90deg, #ff4400, #ffaa00);
+      }
+      #target-name {
+        color: #ff4444;
+        font-size: 16px;
+        margin-bottom: 5px;
+        text-shadow: 0 0 10px #000;
+      }
+      #target-hp-outer {
+        width: 100%;
+        height: 16px;
+        background: #222;
+        border: 2px solid #555;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      #target-hp-fill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(90deg, #ff0040, #ff4040);
+        transition: width 0.2s;
+        border-radius: 8px;
+      }
+      #target-hp-text {
+        color: #ccc;
+        font-size: 12px;
+        margin-top: 3px;
+        font-family: monospace;
+        text-shadow: 0 0 5px #000;
+      }
+
+      /* Player HP bar (bottom left) */
+      #player-hp {
+        position: fixed;
+        bottom: 100px;
+        left: 30px;
+        width: 250px;
+        z-index: 10;
+      }
+      #player-hp-label {
+        color: #88ff88;
+        font-size: 13px;
+        margin-bottom: 4px;
+        text-shadow: 0 0 5px #000;
+        font-family: monospace;
+      }
+      #player-hp-outer {
+        width: 100%;
+        height: 18px;
+        background: #222;
+        border: 2px solid #4a4;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      #player-hp-fill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(90deg, #22aa44, #44ff66);
+        transition: width 0.2s;
+        border-radius: 8px;
+      }
+      #player-hp-fill.low {
+        background: linear-gradient(90deg, #cc2200, #ff4422);
+      }
+
+      /* Shield bar */
+      #player-shield-bar {
+        position: fixed;
+        bottom: 132px;
+        left: 30px;
+        width: 250px;
+        z-index: 10;
+      }
+      #shield-label {
+        color: #66bbff;
+        font-size: 11px;
+        margin-bottom: 3px;
+        text-shadow: 0 0 5px #000;
+        font-family: monospace;
+      }
+      #shield-outer {
+        width: 100%;
+        height: 12px;
+        background: #1a1a2e;
+        border: 2px solid #3366aa;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      #shield-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #2266cc, #44aaff);
+        transition: width 0.2s;
+        border-radius: 6px;
+      }
+
+      /* Leaderboard */
+      #leaderboard {
+        position: fixed;
+        top: 50px;
+        right: 20px;
+        width: 200px;
+        z-index: 10;
+        font-family: monospace;
+        font-size: 12px;
+        text-shadow: 0 0 5px #000;
+      }
+      #leaderboard h3 {
+        color: #aaa;
+        font-size: 13px;
+        margin-bottom: 6px;
+        border-bottom: 1px solid #444;
+        padding-bottom: 4px;
+      }
+      #lb-best {
+        color: #ffdd00;
+        font-size: 14px;
+        margin-bottom: 8px;
+        text-shadow: 0 0 10px #ffaa00;
+      }
+      .lb-entry {
+        color: #888;
+        line-height: 1.6;
+      }
+      .lb-entry.current {
+        color: #44ff88;
+      }
+
+      /* Hit vignette */
+      #hit-vignette {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: 15;
+        opacity: 0;
+        transition: opacity 0.1s;
+        background: radial-gradient(ellipse at center, transparent 50%, rgba(255,0,0,0.6) 100%);
+      }
+
+      /* Death screen */
+      #death-screen {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.85);
+        z-index: 100;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #death-screen.show { display: flex; }
+      #death-screen h1 {
+        color: #ff2222;
+        font-size: 64px;
+        text-shadow: 0 0 30px #ff0000;
+        margin-bottom: 20px;
+      }
+      #death-screen p {
+        color: #ccc;
+        font-size: 20px;
+        margin-bottom: 30px;
+      }
+      #death-screen button {
+        padding: 15px 40px;
+        font-size: 20px;
+        background: #ff2244;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-family: 'Arial Black', sans-serif;
+        pointer-events: auto;
+      }
+      #death-screen button:hover { background: #ff4466; }
+
+      /* Level up cards */
+      #level-up-screen {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.75);
+        z-index: 90;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #level-up-screen.show { display: flex; }
+      #level-up-screen h2 {
+        color: #ffdd00;
+        font-size: 32px;
+        margin-bottom: 30px;
+        text-shadow: 0 0 20px #ffaa00;
+      }
+      #card-container {
+        display: flex;
+        gap: 20px;
+      }
+      .upgrade-card {
+        width: 180px;
+        padding: 20px 15px;
+        background: linear-gradient(135deg, #1a1a2e, #2a2a4e);
+        border: 2px solid #555;
+        border-radius: 12px;
+        cursor: pointer;
+        text-align: center;
+        transition: transform 0.15s, border-color 0.15s;
+        pointer-events: auto;
+      }
+      .upgrade-card:hover {
+        transform: translateY(-8px) scale(1.05);
+        border-color: #ffdd00;
+        box-shadow: 0 0 20px rgba(255,220,0,0.3);
+      }
+      .upgrade-card .card-icon {
+        font-size: 36px;
+        margin-bottom: 10px;
+      }
+      .upgrade-card .card-title {
+        color: #fff;
+        font-size: 15px;
+        margin-bottom: 8px;
+        font-family: 'Arial Black', sans-serif;
+      }
+      .upgrade-card .card-desc {
+        color: #aaa;
+        font-size: 11px;
+        font-family: monospace;
+        line-height: 1.4;
+      }
+      .upgrade-card.rarity-common { border-color: #888; }
+      .upgrade-card.rarity-rare { border-color: #4488ff; }
+      .upgrade-card.rarity-epic { border-color: #aa44ff; }
+      .upgrade-card.rarity-legendary { border-color: #ffaa00; }
+
+      /* Wave banner */
+      #wave-banner {
+        position: fixed;
+        top: 40%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #ffaa00;
+        font-size: 48px;
+        z-index: 25;
+        text-shadow: 0 0 20px #ff6600, 0 0 40px #ff4400;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+      }
+      #wave-banner.show { opacity: 1; }
+
+      /* Kill counter */
+      #kill-counter {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        color: #ff8844;
+        font-size: 22px;
+        z-index: 10;
+        text-shadow: 0 0 10px #ff4400;
+      }
+
+      #crosshair {
+        position: fixed;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        font-size: 24px;
+        z-index: 10;
+        opacity: 0.5;
+      }
+
+      /* Pickup notification */
+      .pickup-text {
+        position: fixed;
+        left: 50%;
+        top: 45%;
+        transform: translateX(-50%);
+        font-family: 'Arial Black', sans-serif;
+        font-size: 20px;
+        pointer-events: none;
+        z-index: 25;
+        text-shadow: 0 0 10px rgba(0,0,0,0.8);
+        animation: pickup-float 1.5s ease-out forwards;
+      }
+      .pickup-text.hp { color: #44ff66; }
+      .pickup-text.dmg { color: #ff6644; }
+
+      @keyframes pickup-float {
+        0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        30% { transform: translateX(-50%) translateY(-20px) scale(1.2); }
+        100% { opacity: 0; transform: translateX(-50%) translateY(-80px) scale(0.9); }
+      }
+
+      /* Player stats */
+      #player-stats {
+        position: fixed;
+        bottom: 170px;
+        left: 30px;
+        color: #ccc;
+        font-family: monospace;
+        font-size: 11px;
+        z-index: 10;
+        line-height: 1.5;
+        text-shadow: 0 0 5px #000;
+      }
+      #player-stats .hp-bonus { color: #44ff66; }
+      #player-stats .dmg-bonus { color: #ff6644; }
+
+      /* Player damage numbers */
+      .damage-number.player-hit {
+        color: #ff2222 !important;
+        text-shadow: 0 0 15px #ff0000, 0 0 30px #880000, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+      .damage-number.skill-slam {
+        color: #ff8800 !important;
+        font-size: 42px !important;
+        text-shadow: 0 0 20px #ff4400, 0 0 40px #cc2200, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+      .damage-number.combo-finisher {
+        color: #ffcc22 !important;
+        font-size: 48px !important;
+        text-shadow: 0 0 20px #ffaa00, 0 0 40px #ff6600, 2px 2px 4px rgba(0,0,0,0.8);
+        animation: float-up-crit 1.5s ease-out forwards;
+      }
+      .damage-number.skill-heavy {
+        color: #ff4422 !important;
+        font-size: 44px !important;
+        text-shadow: 0 0 20px #ff2200, 0 0 40px #cc0000, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+      .damage-number.shield-hit {
+        color: #44aaff !important;
+        text-shadow: 0 0 15px #2266cc, 0 0 30px #0044aa, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+      .damage-number.parry {
+        color: #ffdd00 !important;
+        font-size: 36px !important;
+        text-shadow: 0 0 20px #ffaa00, 0 0 40px #ff6600, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+
+      #controls {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        color: #aaa;
+        font-family: monospace;
+        font-size: 12px;
+        z-index: 10;
+        line-height: 1.6;
+        text-shadow: 0 0 5px #000;
+      }
+
+      /* Skill bar */
+      #skill-bar {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 10px;
+        z-index: 10;
+      }
+      .skill-slot {
+        width: 64px;
+        height: 64px;
+        border: 2px solid #555;
+        border-radius: 8px;
+        background: rgba(0,0,0,0.7);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .skill-slot .key {
+        position: absolute;
+        top: 2px;
+        left: 4px;
+        font-size: 11px;
+        color: #aaa;
+        font-family: monospace;
+      }
+      .skill-slot .icon {
+        font-size: 24px;
+      }
+      .skill-slot .name {
+        font-size: 8px;
+        color: #999;
+        margin-top: 2px;
+        font-family: monospace;
+      }
+      .skill-slot .cooldown-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 0%;
+        background: rgba(0,0,0,0.7);
+        border-radius: 6px;
+        transition: height 0.1s linear;
+      }
+      .skill-slot .cooldown-text {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #fff;
+        font-size: 18px;
+        font-family: monospace;
+        display: none;
+        text-shadow: 0 0 5px #000;
+      }
+      .skill-slot.on-cd .cooldown-text { display: block; }
+      .skill-slot.ready { border-color: #88ff88; box-shadow: 0 0 10px rgba(100,255,100,0.3); }
+      .skill-slot.ult { border-color: #ffaa00; }
+      .skill-slot.ult.ready { border-color: #ffdd00; box-shadow: 0 0 15px rgba(255,200,0,0.5); }
+
+      /* LMB slot */
+      .skill-slot.lmb { border-color: #4488ff; }
+      .skill-slot.lmb.ready { border-color: #66aaff; box-shadow: 0 0 8px rgba(100,150,255,0.3); }
+
+      /* Damage numbers */
+      .damage-number {
+        position: fixed;
+        font-family: 'Arial Black', Impact, sans-serif;
+        font-weight: 900;
+        pointer-events: none;
+        z-index: 20;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        animation: float-up 1.2s ease-out forwards;
+      }
+      .damage-number.crit {
+        color: #ffdd00 !important;
+        text-shadow: 0 0 20px #ff8800, 0 0 40px #ff4400, 0 0 60px #ff2200, 2px 2px 4px rgba(0,0,0,0.8);
+        animation: float-up-crit 1.5s ease-out forwards;
+      }
+      @keyframes float-up-crit {
+        0% { opacity: 1; transform: translateY(0) scale(0.2) rotate(-5deg); }
+        8% { opacity: 1; transform: translateY(-8px) scale(2.0) rotate(3deg); }
+        16% { opacity: 1; transform: translateY(-15px) scale(1.5) rotate(-2deg); }
+        30% { opacity: 1; transform: translateY(-25px) scale(1.3) rotate(0deg); }
+        100% { opacity: 0; transform: translateY(-120px) scale(0.8) rotate(0deg); }
+      }
+      .damage-number.skill-1 {
+        color: #44ddff !important;
+        text-shadow: 0 0 15px #0088ff, 0 0 30px #0044aa, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+      .damage-number.skill-3 {
+        color: #aa66ff !important;
+        text-shadow: 0 0 15px #8833ff, 0 0 30px #6600cc, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+      .damage-number.skill-2 {
+        color: #ff4444 !important;
+        text-shadow: 0 0 15px #ff0000, 0 0 30px #aa0000, 2px 2px 4px rgba(0,0,0,0.8);
+      }
+      .damage-number.skill-4 {
+        color: #ffaa00 !important;
+        font-size: 60px !important;
+        text-shadow: 0 0 30px #ff6600, 0 0 60px #ff4400, 0 0 90px #ff0000, 3px 3px 6px rgba(0,0,0,0.9);
+        animation: float-up-big 1.5s ease-out forwards;
+      }
+
+      @keyframes float-up {
+        0% { opacity: 1; transform: translateY(0) scale(0.3); }
+        8% { opacity: 1; transform: translateY(-5px) scale(1.5); }
+        20% { opacity: 1; transform: translateY(-15px) scale(1.1); }
+        35% { opacity: 1; transform: translateY(-30px) scale(1.2); }
+        100% { opacity: 0; transform: translateY(-100px) scale(0.7); }
+      }
+      @keyframes float-up-big {
+        0% { opacity: 1; transform: translateY(0) scale(0.2); }
+        10% { opacity: 1; transform: translateY(-5px) scale(1.8); }
+        20% { opacity: 1; transform: translateY(-15px) scale(1.4); }
+        35% { opacity: 1; transform: translateY(-30px) scale(1.5); }
+        100% { opacity: 0; transform: translateY(-140px) scale(0.8); }
+      }
+    </style>
+    <script type="module" crossorigin src="/slasher-3d/assets/index-hMwmTCdz.js"></script>
+  </head>
+  <body>
+    <div id="ui">
+      <div id="controls">
+        WASD — move | SPACE — jump (x2)<br>
+        LMB — 3-hit combo | RMB — heavy spin<br>
+        LMB in air — GROUND SLAM<br>
+        SHIFT — dash | F — parry<br>
+        CLICK to start
+      </div>
+      <div id="crosshair">+</div>
+    </div>
+
+    <div id="target-bar">
+      <div id="target-name"></div>
+      <div id="target-hp-outer"><div id="target-hp-fill"></div></div>
+      <div id="target-hp-text"></div>
+    </div>
+
+    <div id="kill-counter">KILLS: 0 | WAVE: 1</div>
+    <div id="leaderboard">
+      <h3>LEADERBOARD</h3>
+      <div id="lb-best"></div>
+      <div id="lb-entries"></div>
+    </div>
+
+    <div id="player-stats">
+      <span class="hp-bonus" id="stat-hp">+0 HP</span> | <span class="dmg-bonus" id="stat-dmg">+0% DMG</span>
+    </div>
+    <div id="player-shield-bar">
+      <div id="shield-label">SHIELD: 0 / 0</div>
+      <div id="shield-outer"><div id="shield-fill"></div></div>
+    </div>
+    <div id="player-hp">
+      <div id="player-hp-label">HP: 100 / 100</div>
+      <div id="player-hp-outer"><div id="player-hp-fill"></div></div>
+    </div>
+
+    <div id="hit-vignette"></div>
+    <div id="wave-banner"></div>
+
+    <div id="level-up-screen">
+      <h2>WAVE CLEARED — CHOOSE UPGRADE</h2>
+      <div id="card-container"></div>
+    </div>
+
+    <div id="death-screen">
+      <h1>YOU DIED</h1>
+      <p id="death-stats"></p>
+      <p id="death-record" style="color:#ffdd00;font-size:18px;margin-bottom:20px;text-shadow:0 0 15px #ffaa00;display:none"></p>
+      <button id="respawn-btn">RESPAWN</button>
+    </div>
+
+    <div id="skill-bar">
+      <div class="skill-slot lmb ready" id="slot-lmb">
+        <span class="key">LMB</span>
+        <span class="icon" style="color:#4488ff">&#9876;</span>
+        <span class="name">Slash</span>
+        <div class="cooldown-overlay"></div>
+        <div class="cooldown-text"></div>
+      </div>
+      <div class="skill-slot ready" id="slot-slam">
+        <span class="key">AIR+LMB</span>
+        <span class="icon" style="color:#ff8800">&#9660;</span>
+        <span class="name">Slam</span>
+        <div class="cooldown-overlay"></div>
+        <div class="cooldown-text"></div>
+      </div>
+      <div class="skill-slot ready" id="slot-heavy">
+        <span class="key">RMB</span>
+        <span class="icon" style="color:#ff4422">&#10026;</span>
+        <span class="name">Heavy</span>
+        <div class="cooldown-overlay"></div>
+        <div class="cooldown-text"></div>
+      </div>
+      <div class="skill-slot ready" id="slot-dash">
+        <span class="key">SHIFT</span>
+        <span class="icon" style="color:#44aaff">&#8680;</span>
+        <span class="name">Dash</span>
+        <div class="cooldown-overlay"></div>
+        <div class="cooldown-text"></div>
+      </div>
+      <div class="skill-slot ready" id="slot-parry">
+        <span class="key">F</span>
+        <span class="icon" style="color:#ffdd00">&#128737;</span>
+        <span class="name">Parry</span>
+        <div class="cooldown-overlay"></div>
+        <div class="cooldown-text"></div>
+      </div>
+    </div>
+
+  </body>
+</html>
