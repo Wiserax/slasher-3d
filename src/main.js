@@ -1082,6 +1082,7 @@ const enemies = [];
 const ENEMY_NAMES = ['Imp', 'Demon', 'Fiend', 'Wraith', 'Ghoul', 'Hellspawn', 'Shade', 'Brute'];
 let waveNum = 1;
 let killCount = 0;
+let enemyIdCounter = 0;
 
 function createEnemy(x, z) {
   const group = new THREE.Group();
@@ -1302,6 +1303,7 @@ function createEnemy(x, z) {
     name: enemyType === 'ranged' ? `${name} Mage` : enemyType === 'fast' ? `${name} Scout` : `${name} Lv.${waveNum}`,
     alive: true,
     enemyType,
+    eid: enemyIdCounter++,
     attackCd: 0,
     attackRate: enemyType === 'ranged' ? 2.0 + Math.random() * 0.5 : 1.0 + Math.random() * 0.5,
     damage: dmg,
@@ -1743,6 +1745,11 @@ function updateVFX(dt) {
     }
   }
 }
+
+// ─── REUSABLE VECTORS (avoid per-frame alloc) ───
+const _tmpVec = new THREE.Vector3();
+const _tmpVec2 = new THREE.Vector3();
+const _camOffset = new THREE.Vector3();
 
 // ─── GAME STATE ───
 const keys = {};
@@ -2202,160 +2209,9 @@ function killEnemy(e) {
   deathAnim();
 }
 
-// ─── UPGRADE CARD SYSTEM ───
-const ALL_UPGRADES = [
-  // Common
-  { icon: '&#10084;', title: '+20 Max HP', desc: 'Increases maximum health by 20', rarity: 'common', apply: () => { player.bonusHp += 20; player.maxHp = player.baseMaxHp + player.bonusHp; player.hp = Math.min(player.hp + 20, player.maxHp); updatePlayerHpBar(); } },
-  { icon: '&#9876;', title: '+10% DMG', desc: 'All attacks deal 10% more damage', rarity: 'common', apply: () => { player.bonusDmg += 10; updateStatsDisplay(); } },
-  { icon: '&#9829;', title: 'Heal 50%', desc: 'Restore 50% of max HP', rarity: 'common', apply: () => { player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.5)); updatePlayerHpBar(); } },
-  { icon: '&#9733;', title: '+5% Crit Chance', desc: 'Slightly more critical hits', rarity: 'common', apply: () => { player.critBonus = (player.critBonus || 0) + 0.05; } },
-  { icon: '&#8680;', title: 'Swift Dash', desc: 'Dash cooldown -30%', rarity: 'common', apply: () => { /* will be checked in dash */ player.dashCdMod = (player.dashCdMod || 1) * 0.7; } },
-  // Rare
-  { icon: '&#9733;', title: '+25% Crit DMG', desc: 'Critical hits deal even more damage', rarity: 'rare', apply: () => { player.critBonus = (player.critBonus || 0) + 0.25; } },
-  { icon: '&#10052;', title: 'Frost Mastery', desc: 'Frost Nova CD -2s, +30% dmg', rarity: 'rare', apply: () => { skills[1].cd = Math.max(1, skills[1].cd - 2); skills[1].baseDmgMin *= 1.3; skills[1].baseDmgMax *= 1.3; } },
-  { icon: '&#9889;', title: 'Storm Chain +1', desc: 'Thunder chains to 1 extra enemy', rarity: 'rare', apply: () => { player.extraChains = (player.extraChains || 0) + 1; } },
-  { icon: '&#10010;', title: 'Bloodthirst', desc: 'Heal 2% of damage dealt', rarity: 'epic', apply: () => { player.lifesteal = (player.lifesteal || 0) + 0.02; } },
-  { icon: '&#9876;', title: 'Sharpened Blade', desc: 'Melee range +1, combo faster', rarity: 'rare', apply: () => { skills.lmb.range += 1; } },
-  // Epic
-  { icon: '&#9876;', title: 'Double Strike', desc: '20% chance to hit twice', rarity: 'epic', apply: () => { player.doubleStrike = (player.doubleStrike || 0) + 0.2; } },
-  { icon: '&#9762;', title: 'Cataclysm Power', desc: 'Ult CD -5s, +50% dmg', rarity: 'epic', apply: () => { skills[4].cd = Math.max(5, skills[4].cd - 5); skills[4].baseDmgMin *= 1.5; skills[4].baseDmgMax *= 1.5; } },
-  { icon: '&#10084;', title: 'Berserker', desc: '+40% DMG but -20 Max HP', rarity: 'epic', apply: () => { player.bonusDmg += 40; player.bonusHp -= 20; player.maxHp = Math.max(50, player.baseMaxHp + player.bonusHp); player.hp = Math.min(player.hp, player.maxHp); updatePlayerHpBar(); updateStatsDisplay(); } },
-  // Legendary
-  { icon: '&#9733;', title: 'Seirin\'s Blade', desc: 'Combo finisher hits 2x, +50% melee', rarity: 'legendary', apply: () => { player.finisherBoost = true; player.bonusDmg += 15; updateStatsDisplay(); } },
-];
+// (Upgrade card system removed — upgrades from lootboxes only)
 
-const upgradeScreenOpen = false; // disabled
-
-function showUpgradeCards() {
-  // Disabled — upgrades come from lootboxes only
-  return;
-  /* old code below */
-  document.exitPointerLock();
-  const screen = document.getElementById('level-up-screen');
-  const container = document.getElementById('card-container');
-  container.innerHTML = '';
-
-  // Pick 3 random upgrades (weighted by rarity)
-  const pool = [...ALL_UPGRADES];
-  const picked = [];
-  for (let i = 0; i < 3 && pool.length > 0; i++) {
-    const idx = Math.floor(Math.random() * pool.length);
-    picked.push(pool.splice(idx, 1)[0]);
-  }
-
-  picked.forEach(upgrade => {
-    const card = document.createElement('div');
-    card.className = `upgrade-card rarity-${upgrade.rarity}`;
-    card.innerHTML = `
-      <div class="card-icon">${upgrade.icon}</div>
-      <div class="card-title">${upgrade.title}</div>
-      <div class="card-desc">${upgrade.desc}</div>
-    `;
-    card.addEventListener('click', () => {
-      upgrade.apply();
-      hideUpgradeCards();
-    });
-    container.appendChild(card);
-  });
-
-  screen.classList.add('show');
-}
-
-function hideUpgradeCards() {
-  upgradeScreenOpen = false;
-  document.getElementById('level-up-screen').classList.remove('show');
-  renderer.domElement.requestPointerLock();
-  setTimeout(spawnWave, 800);
-}
-
-function useSkill(skillKey) {
-  if (!player.alive) return;
-  const skill = skills[skillKey];
-  if (skill.timer > 0) return;
-  skill.timer = skill.cd;
-
-  const pPos = playerGroup.position.clone();
-  const sd = getSkillDmg(skill.baseDmgMin, skill.baseDmgMax);
-
-  if (skillKey === '1') {
-    // ── FROST NOVA: AoE around player, hits all in range, slows ──
-    createFrostNovaVFX(pPos, skill.range);
-    enemies.forEach(e => {
-      if (!e.userData.alive) return;
-      const d = pPos.distanceTo(e.position);
-      if (d < skill.range) {
-        damageEnemy(e, sd.min, sd.max, skill.critMult, skill.cssClass);
-        // Slow enemy for 2s
-        const origSpeed = e.userData.speed;
-        e.userData.speed *= 0.3;
-        setTimeout(() => { if (e.userData.alive) e.userData.speed = origSpeed; }, 2000);
-      }
-    });
-
-  } else if (skillKey === '2') {
-    // ── BLOOD REND: massive slash wave forward, hits first enemy for huge damage ──
-    const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
-    const target = pPos.clone().addScaledVector(forward, skill.range);
-    createBloodRendVFX(pPos, target);
-    // Hit all enemies in a cone forward
-    let hitCount = 0;
-    enemies.forEach(e => {
-      if (!e.userData.alive) return;
-      const d = pPos.distanceTo(e.position);
-      if (d > skill.range) return;
-      // Check cone (60 degree)
-      const toEnemy = e.position.clone().sub(pPos).normalize();
-      toEnemy.y = 0;
-      const dot = forward.dot(toEnemy);
-      if (dot > 0.5) { // ~60 degree cone
-        damageEnemy(e, sd.min, sd.max, skill.critMult, skill.cssClass);
-        hitCount++;
-      }
-    });
-
-  } else if (skillKey === '3') {
-    // ── THUNDER SMITE: lightning bolt on closest enemy, chains to 2 nearby ──
-    let primary = null;
-    let closestDist = skill.range;
-    enemies.forEach(e => {
-      if (!e.userData.alive) return;
-      const d = pPos.distanceTo(e.position);
-      if (d < closestDist) { closestDist = d; primary = e; }
-    });
-    if (primary) {
-      createThunderVFX(primary.position.clone());
-      damageEnemy(primary, sd.min, sd.max, skill.critMult, skill.cssClass);
-
-      // Chain lightning to 2 nearby enemies
-      let chains = 0;
-      enemies.forEach(e => {
-        if (!e.userData.alive || e === primary || chains >= 2) return;
-        const d = primary.position.distanceTo(e.position);
-        if (d < 5) {
-          chains++;
-          setTimeout(() => {
-            createThunderVFX(e.position.clone());
-            damageEnemy(e, skill.dmgMin * 0.5, skill.dmgMax * 0.5, skill.critMult, skill.cssClass);
-          }, chains * 150);
-        }
-      });
-    }
-
-  } else if (skillKey === '4') {
-    // ── CATACLYSM: meteor + shockwave, hits ALL in massive range ──
-    createUltVFX(pPos);
-    // Delay damage to match meteor impact
-    setTimeout(() => {
-      enemies.forEach(e => {
-        if (!e.userData.alive) return;
-        const d = pPos.distanceTo(e.position);
-        if (d < skill.range) {
-          damageEnemy(e, sd.min, sd.max, skill.critMult, skill.cssClass);
-        }
-      });
-    }, 450);
-  }
-}
+// (All active skills removed — combat is melee-only)
 
 // ─── UI UPDATE ───
 function updateTargetBar() {
@@ -2523,7 +2379,7 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (!player.alive || upgradeScreenOpen) {
+  if (!player.alive) {
     renderer.render(scene, camera);
     return;
   }
@@ -2951,7 +2807,7 @@ function animate() {
       } else {
         // Strafe sideways
         const strafe = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x).normalize();
-        e.position.addScaledVector(strafe, e.userData.speed * dt * (Math.sin(Date.now() * 0.002 + e.id) > 0 ? 1 : -1));
+        e.position.addScaledVector(strafe, e.userData.speed * dt * (Math.sin(Date.now() * 0.002 + (e.userData.eid || 0)) > 0 ? 1 : -1));
       }
     } else if (e.userData.enemyType === 'fast') {
       // Fast: zigzag approach
@@ -3007,7 +2863,7 @@ function animate() {
         const projDir = playerGroup.position.clone().sub(e.position);
         projDir.y = 0; projDir.normalize();
         const proj = new THREE.Mesh(
-          new THREE.SphereGeometry(0.2, 8, 8),
+          window._projGeo || new THREE.SphereGeometry(0.2, 6, 6),
           new THREE.MeshBasicMaterial({ color: 0xff44aa, transparent: true, opacity: 0.9 })
         );
         proj.position.copy(e.position);
@@ -3016,7 +2872,7 @@ function animate() {
         proj.add(projLight);
         scene.add(proj);
         // Track projectile
-        if (!window._projectiles) window._projectiles = [];
+        if (!window._projectiles) { window._projectiles = []; window._projGeo = new THREE.SphereGeometry(0.2, 6, 6); }
         playSound('projectile');
         window._projectiles.push({
           mesh: proj, dir: projDir, speed: 8, damage: e.userData.damage,
@@ -3117,9 +2973,9 @@ function animate() {
     if (e.userData.mesh) {
       const bobBase = e.userData.floats ? 0.6 : 0; // mages float
       e.userData.mesh.position.y = 1.3 * e.userData.scale +
-        Math.sin(Date.now() * 0.003 + e.id) * (e.userData.floats ? 0.25 : 0.1);
+        Math.sin(Date.now() * 0.003 + (e.userData.eid || 0)) * (e.userData.floats ? 0.25 : 0.1);
       if (e.userData.floats && !e.userData.isJuggled) {
-        e.position.y = bobBase + Math.sin(Date.now() * 0.002 + e.id) * 0.15;
+        e.position.y = bobBase + Math.sin(Date.now() * 0.002 + (e.userData.eid || 0)) * 0.15;
       }
     }
   });
@@ -3139,12 +2995,14 @@ function animate() {
       if (pDist < 1.2 && heightDiff < 2) {
         damagePlayer(p.damage, p.mesh.position);
         scene.remove(p.mesh);
+        p.mesh.material.dispose(); // geometry shared, don't dispose
         window._projectiles.splice(i, 1);
         continue;
       }
       // Timeout or out of arena
       if (p.timer > p.maxTime || p.mesh.position.length() > ARENA_RADIUS + 5) {
         scene.remove(p.mesh);
+        p.mesh.material.dispose();
         window._projectiles.splice(i, 1);
       }
     }
