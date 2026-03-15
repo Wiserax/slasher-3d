@@ -387,15 +387,68 @@
 
       #controls {
         position: fixed;
-        top: 20px;
-        left: 20px;
-        color: #aaa;
+        top: 15px;
+        left: 15px;
+        color: #ccc;
         font-family: monospace;
-        font-size: 12px;
+        font-size: 11px;
         z-index: 10;
-        line-height: 1.6;
-        text-shadow: 0 0 5px #000;
+        line-height: 1.8;
+        text-shadow: 0 0 8px #000, 0 0 3px #000;
+        background: rgba(0,0,0,0.35);
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.08);
+        opacity: 0.7;
+        transition: opacity 0.2s;
       }
+      #controls:hover { opacity: 1; }
+      #controls .key-hint {
+        color: #ffdd66;
+        font-weight: bold;
+      }
+
+      /* Pause screen */
+      #pause-screen {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7);
+        z-index: 80;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        pointer-events: auto;
+      }
+      #pause-screen.show { display: flex; }
+      #pause-screen h1 {
+        color: #fff;
+        font-size: 52px;
+        margin-bottom: 15px;
+        text-shadow: 0 0 20px rgba(255,255,255,0.3);
+      }
+      #pause-screen p {
+        color: #aaa;
+        font-size: 16px;
+        margin-bottom: 25px;
+        font-family: monospace;
+      }
+      #pause-screen button {
+        padding: 12px 30px;
+        font-size: 16px;
+        color: #fff;
+        border: 2px solid #555;
+        border-radius: 8px;
+        cursor: pointer;
+        font-family: 'Arial Black', sans-serif;
+        margin: 5px;
+        pointer-events: auto;
+        transition: transform 0.1s, border-color 0.1s;
+      }
+      #pause-screen button:hover { transform: scale(1.05); border-color: #fff; }
+      #btn-resume { background: #336644; }
+      #btn-restart { background: #663333; }
 
       /* Skill bar */
       #skill-bar {
@@ -522,18 +575,25 @@
         100% { opacity: 0; transform: translateY(-140px) scale(0.8); }
       }
     </style>
-    <script type="module" crossorigin src="/slasher-3d/assets/index-hMwmTCdz.js"></script>
+    <script type="module" crossorigin src="/slasher-3d/assets/index-ClFp1vg6.js"></script>
   </head>
   <body>
     <div id="ui">
       <div id="controls">
-        WASD — move | SPACE — jump (x2)<br>
-        LMB — 3-hit combo | RMB — heavy spin<br>
-        LMB in air — GROUND SLAM<br>
-        SHIFT — dash | F — parry<br>
-        CLICK to start
+        <span class="key-hint">WASD</span> move &nbsp; <span class="key-hint">SPACE</span> jump (x2)<br>
+        <span class="key-hint">LMB</span> combo &nbsp; <span class="key-hint">RMB</span> heavy spin<br>
+        <span class="key-hint">AIR+LMB</span> slam &nbsp; <span class="key-hint">SHIFT</span> dash<br>
+        <span class="key-hint">F</span> parry &nbsp; <span class="key-hint">ESC</span> pause<br>
+        <span style="color:#888;font-size:10px">click to start</span>
       </div>
       <div id="crosshair">+</div>
+    </div>
+
+    <div id="pause-screen">
+      <h1>PAUSED</h1>
+      <p>Wave <span id="pause-wave">1</span> | Kills <span id="pause-kills">0</span></p>
+      <button id="btn-resume">RESUME</button>
+      <button id="btn-restart">RESTART</button>
     </div>
 
     <div id="target-bar">
