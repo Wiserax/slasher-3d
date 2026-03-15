@@ -1746,6 +1746,34 @@ function updateVFX(dt) {
   }
 }
 
+// ─── PAUSE ───
+let isPaused = false;
+
+function togglePause() {
+  if (!player.alive) return;
+  isPaused = !isPaused;
+  const screen = document.getElementById('pause-screen');
+  if (isPaused) {
+    screen.classList.add('show');
+    document.getElementById('pause-wave').textContent = waveNum;
+    document.getElementById('pause-kills').textContent = killCount;
+    document.exitPointerLock();
+  } else {
+    screen.classList.remove('show');
+    renderer.domElement.requestPointerLock();
+  }
+}
+
+function restartGame() {
+  isPaused = false;
+  document.getElementById('pause-screen').classList.remove('show');
+  respawnPlayer();
+  renderer.domElement.requestPointerLock();
+}
+
+document.getElementById('btn-resume').addEventListener('click', () => togglePause());
+document.getElementById('btn-restart').addEventListener('click', () => restartGame());
+
 // ─── REUSABLE VECTORS (avoid per-frame alloc) ───
 const _tmpVec = new THREE.Vector3();
 const _tmpVec2 = new THREE.Vector3();
@@ -2321,7 +2349,9 @@ renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (!pointerLocked || !player.alive) return;
-  // Skills removed — only melee, slam, dash, parry
+  // Pause
+  if (e.code === 'Escape') { togglePause(); return; }
+  if (isPaused) return;
   // Jump / double jump
   if (e.code === 'Space') {
     if (player.jumpsLeft > 0) {
@@ -2379,7 +2409,7 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (!player.alive) {
+  if (!player.alive || isPaused) {
     renderer.render(scene, camera);
     return;
   }
